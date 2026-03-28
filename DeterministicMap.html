@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Honduras School Connectivity — Dashboard</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080C14;
+    --panel-bg: rgba(8, 12, 20, 0.85);
+    --panel-border: rgba(0, 229, 255, 0.12);
+    --cyan: #00E676;
+    --coral: #FF4444;
+    --gold: #FFD600;
+    --equipped-blue: #4285F4;
+    --text-primary: #E0E6ED;
+    --text-secondary: #607080;
+    --text-label: #8899AA;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    --font-sans: 'Inter', system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-sans); background: var(--bg); color: var(--text-primary); overflow: hidden; height: 100vh; }
+  #map { position: absolute; top: 32px; left: 0; width: 100%; height: calc(100% - 32px); }
+
+  /* CRT Scanline overlay */
+  #scanlines {
+    position: absolute; top: 32px; left: 0; width: 100%; height: calc(100% - 32px);
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 4px);
+    pointer-events: none; z-index: 50;
+  }
+
+  /* Header Bar */
+  #header {
+    position: absolute; top: 0; left: 0; width: 100%; height: 32px; z-index: 200;
+    background: rgba(8, 12, 20, 0.95); border-bottom: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
+    font-size: 10px;
+  }
+  #header-left {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .mode-pills {
+    display: flex; gap: 4px;
+  }
+  .mode-pill {
+    padding: 3px 10px; border-radius: 10px; font-size: 9px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-secondary); transition: all 0.2s; font-family: var(--font-sans);
+  }
+  .mode-pill.active {
+    background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.4); color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0,229,255,0.15);
+  }
+  .mode-pill:hover:not(.active) { border-color: rgba(255,255,255,0.2); color: var(--text-primary); }
+  .mode-pill.disabled { opacity: 0.3; pointer-events: none; }
+  #header-title {
+    font-variant: small-caps; letter-spacing: 3px; color: var(--text-secondary);
+    font-weight: 600; font-size: 10px;
+  }
+  #header-center { font-family: var(--font-mono); color: var(--text-secondary); font-size: 10px; }
+  #header-right { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
+  .live-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #00ff88;
+    margin-right: 4px; animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1.0; } }
+  #header-zoom { font-family: var(--font-mono); }
+
+  /* Upload Screen */
+  #upload-screen {
+    position: fixed; inset: 0; z-index: 1000; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+  }
+  #upload-screen.hidden { display: none; }
+  .upload-container {
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 40px; max-width: 580px; width: 90%;
+    backdrop-filter: blur(20px);
+  }
+  .upload-container h1 {
+    font-size: 20px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px;
+    font-variant: small-caps; letter-spacing: 2px; color: var(--text-secondary);
+  }
+  .upload-container p { font-size: 12px; color: var(--text-secondary); margin-bottom: 28px; }
+  .upload-group-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; margin-top: 16px;
+  }
+  .upload-group-label:first-of-type { margin-top: 0; }
+  .upload-zone {
+    border: 1px dashed rgba(255,255,255,0.12); border-radius: 8px; padding: 22px;
+    text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 12px;
+    position: relative;
+  }
+  .upload-zone:hover { border-color: rgba(0,229,255,0.4); background: rgba(0,229,255,0.03); }
+  .upload-zone.loaded { border-color: rgba(0,229,255,0.5); background: rgba(0,229,255,0.05); }
+  .upload-zone input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1; }
+  .upload-zone .label { font-size: 13px; font-weight: 500; color: var(--text-secondary); pointer-events: none; }
+  .upload-zone .label span { color: var(--cyan); }
+  .upload-zone .status { font-size: 11px; color: var(--cyan); margin-top: 6px; display: none; font-family: var(--font-mono); pointer-events: none; }
+  .upload-zone.loaded .status { display: block; }
+  #launch-btn {
+    width: 100%; padding: 12px; border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #00e5ff 0%, #0091ea 100%);
+    color: var(--bg); font-family: var(--font-sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; margin-top: 12px; opacity: 0.3; pointer-events: none;
+  }
+  #launch-btn.ready { opacity: 1; pointer-events: auto; }
+  #launch-btn.ready:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,229,255,0.3); }
+  .loading-bar { height: 2px; background: rgba(0,229,255,0.1); border-radius: 1px; margin-top: 10px; overflow: hidden; display: none; }
+  .loading-bar.active { display: block; }
+  .loading-bar .fill { height: 100%; background: var(--cyan); border-radius: 1px; width: 0; transition: width 0.3s; }
+
+  /* Control Panel */
+  #controls {
+    position: absolute; top: 48px; left: 12px; z-index: 100;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 12px; width: 240px;
+    backdrop-filter: blur(16px); font-size: 11px;
+    max-height: calc(100vh - 100px); overflow-y: auto;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  #controls.collapsed { transform: translateX(-260px); opacity: 0; pointer-events: none; }
+  #controls::-webkit-scrollbar { width: 3px; }
+  #controls::-webkit-scrollbar-track { background: transparent; }
+  #controls::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  #toggle-controls {
+    position: absolute; top: 48px; left: 12px; z-index: 101;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 6px; padding: 6px 10px; color: var(--text-primary); cursor: pointer;
+    font-family: var(--font-sans); font-size: 11px; transition: all 0.2s;
+    backdrop-filter: blur(12px);
+  }
+  #toggle-controls:hover { background: rgba(20,28,50,0.95); }
+  .section-title {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-secondary); margin-bottom: 8px; margin-top: 12px; font-weight: 600;
+  }
+  .section-title:first-child { margin-top: 0; }
+  .check-row {
+    display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer;
+  }
+  .check-row input[type="checkbox"] {
+    appearance: none; width: 14px; height: 14px; border: 1.5px solid rgba(255,255,255,0.15);
+    border-radius: 3px; cursor: pointer; position: relative; flex-shrink: 0; transition: all 0.15s;
+    background: rgba(255,255,255,0.05);
+  }
+  .check-row input[type="checkbox"]:checked {
+    background: rgba(0,229,255,0.15); border-color: var(--cyan);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+  }
+  .check-row input[type="checkbox"]:checked::after {
+    content: ''; position: absolute; top: 1px; left: 4px; width: 4px; height: 7px;
+    border: solid var(--cyan); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+  }
+  .check-label { flex: 1; color: var(--text-label); font-size: 11px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.diamond { border-radius: 0; transform: rotate(45deg); width: 6px; height: 6px; }
+  select {
+    width: 100%; margin-top: 3px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-primary); padding: 5px 8px; border-radius: 4px; font-family: var(--font-sans);
+    font-size: 11px; cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%23607080' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }
+  select:focus { outline: none; border-color: rgba(0,229,255,0.3); }
+  .radio-group { display: flex; gap: 3px; margin-top: 4px; }
+  .radio-btn {
+    flex: 1; padding: 4px; text-align: center; border-radius: 4px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer; font-size: 10px; color: var(--text-secondary); transition: all 0.15s;
+  }
+  .radio-btn.active {
+    background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.3); color: var(--cyan);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
+  }
+
+  /* Stats Panel */
+  #stats {
+    position: absolute; bottom: 80px; left: 12px; z-index: 100;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 12px 14px; min-width: 240px;
+    backdrop-filter: blur(16px); font-size: 11px;
+  }
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center; padding: 3px 0;
+  }
+  .stat-label { color: var(--text-secondary); font-size: 10px; font-family: var(--font-sans); }
+  .stat-value {
+    font-family: var(--font-mono); font-weight: 600; font-size: 12px;
+    font-variant-numeric: tabular-nums; text-align: right;
+    transition: all 0.4s ease;
+  }
+  .stat-value.cyan { color: var(--cyan); }
+  .stat-value.coral { color: var(--coral); }
+  .stat-value.amber { color: var(--gold); }
+  .stat-value.white { color: var(--text-primary); }
+  .stat-divider { height: 1px; background: rgba(0, 229, 255, 0.08); margin: 5px 0; }
+  .stat-bar-track { height: 2px; background: rgba(255,255,255,0.05); border-radius: 1px; margin-top: 2px; margin-bottom: 4px; }
+  .stat-bar-fill { height: 100%; border-radius: 1px; transition: width 0.6s ease; }
+  .stat-bar-fill.cyan { background: var(--cyan); }
+  .stat-bar-fill.amber { background: var(--gold); }
+
+  /* Legend */
+  .legend-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .legend-dot.diamond { border-radius: 0; transform: rotate(45deg); width: 5px; height: 5px; }
+  .legend-label { font-size: 10px; color: var(--text-secondary); }
+  .legend-count { font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums; margin-left: auto; }
+
+  /* Scale Bar */
+  #scale-bar {
+    position: absolute; bottom: 80px; right: 12px; z-index: 100;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 6px; padding: 8px 12px; backdrop-filter: blur(12px);
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  #scale-line {
+    height: 2px; background: var(--text-secondary); position: relative; min-width: 40px;
+  }
+  #scale-line::before, #scale-line::after {
+    content: ''; position: absolute; top: -3px; width: 1px; height: 8px; background: var(--text-secondary);
+  }
+  #scale-line::before { left: 0; }
+  #scale-line::after { right: 0; }
+
+  /* Tooltip */
+  #tooltip {
+    position: absolute; z-index: 200; pointer-events: none;
+    background: rgba(10, 14, 24, 0.95);
+    border: none; border-left: 2px solid var(--cyan);
+    border-radius: 4px; padding: 10px 14px; font-size: 11px;
+    backdrop-filter: blur(12px); display: none; max-width: 320px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  #tooltip .tt-name { font-weight: 600; font-size: 12px; margin-bottom: 6px; color: var(--text-primary); }
+  #tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; padding: 1.5px 0; }
+  #tooltip .tt-key { color: var(--text-label); font-size: 10px; }
+  #tooltip .tt-val { color: var(--text-label); font-family: var(--font-mono); text-align: right; font-size: 10px; }
+  .tt-status-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+  /* Timeline Bar */
+  #timeline {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 150; height: 64px;
+    background: rgba(8, 12, 20, 0.95); border-top: 1px solid var(--panel-border);
+    display: none; align-items: center; justify-content: center; gap: 0;
+    backdrop-filter: blur(16px);
+  }
+  #timeline-inner {
+    display: flex; align-items: center; gap: 16px; max-width: 800px; width: 100%; padding: 0 24px;
+  }
+  .tl-label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-secondary); font-weight: 600; white-space: nowrap;
+  }
+  #play-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(0,229,255,0.3);
+    background: rgba(0,229,255,0.08); color: var(--cyan); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+    font-size: 14px; flex-shrink: 0;
+  }
+  #play-btn:hover { background: rgba(0,229,255,0.15); box-shadow: 0 0 12px rgba(0,229,255,0.2); }
+  #play-btn.playing { background: rgba(0,229,255,0.2); border-color: var(--cyan); }
+  .year-pills {
+    display: flex; gap: 4px; flex: 1; justify-content: center;
+  }
+  .year-pill {
+    flex: 1; max-width: 120px; height: 36px; border-radius: 6px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transition: all 0.25s ease; position: relative;
+  }
+  .year-pill .yr-num {
+    font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-secondary);
+    transition: all 0.25s;
+  }
+  .year-pill .yr-label {
+    font-size: 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px;
+    opacity: 0.6; transition: all 0.25s;
+  }
+  .year-pill.active {
+    background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.4);
+    box-shadow: 0 0 16px rgba(0,229,255,0.15);
+  }
+  .year-pill.active .yr-num { color: var(--cyan); text-shadow: 0 0 8px rgba(0,229,255,0.5); }
+  .year-pill.active .yr-label { color: var(--cyan); opacity: 1; }
+  .year-pill.past {
+    background: rgba(0,229,255,0.04); border-color: rgba(0,229,255,0.15);
+  }
+  .year-pill.past .yr-num { color: rgba(0,229,255,0.5); }
+  .year-pill:hover:not(.active) { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
+
+  /* Connector line between pills */
+  .year-connector {
+    width: 20px; height: 2px; background: rgba(255,255,255,0.06); flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .year-connector.lit { background: rgba(0,229,255,0.3); }
+
+  .speed-btn {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px; padding: 3px 6px; cursor: pointer; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .speed-btn:hover { border-color: rgba(0,229,255,0.3); color: var(--cyan); }
+
+  /* Pulse animation for new infrastructure */
+  @keyframes infra-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.8); opacity: 0.6; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Charts Panel */
+  #charts-panel {
+    position: absolute; top: 48px; right: 12px; z-index: 100;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 14px 16px; width: 340px;
+    backdrop-filter: blur(16px); display: none;
+    max-height: calc(100vh - 160px); overflow-y: auto;
+  }
+  #charts-panel::-webkit-scrollbar { width: 3px; }
+  #charts-panel::-webkit-scrollbar-track { background: transparent; }
+  #charts-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  #charts-panel .section-title { margin-top: 0; }
+  .chart-section { margin-bottom: 16px; }
+  .chart-section:last-child { margin-bottom: 0; }
+  .bar-chart {
+    display: flex; align-items: flex-end; gap: 6px; height: 120px; margin-top: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px;
+  }
+  .bar-group {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 100%;
+    justify-content: flex-end;
+  }
+  .bar-stack {
+    width: 100%; display: flex; flex-direction: column; justify-content: flex-end; flex: 1;
+    position: relative;
+  }
+  .bar-segment {
+    width: 100%; border-radius: 2px 2px 0 0; min-height: 0; transition: height 0.5s ease;
+  }
+  .bar-segment.devices { background: var(--cyan); }
+  .bar-segment.towers { background: var(--gold); }
+  .bar-segment.wisps { background: #FF8A65; }
+  .bar-segment.opex-bar { background: #AB47BC; }
+  .bar-value {
+    font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary);
+    text-align: center; white-space: nowrap;
+  }
+  .bar-label {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+    text-align: center; margin-top: 4px;
+  }
+  .bar-group.active .bar-label { color: var(--cyan); font-weight: 600; }
+  .bar-group.active .bar-value { color: var(--text-primary); font-weight: 600; }
+  .chart-legend {
+    display: flex; gap: 10px; margin-top: 8px; justify-content: center; flex-wrap: wrap;
+  }
+  .chart-legend-item {
+    display: flex; align-items: center; gap: 4px; font-size: 9px; color: var(--text-secondary);
+  }
+  .chart-legend-swatch { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* Charts Toggle Button */
+  #charts-toggle-btn {
+    position: absolute; bottom: 80px; right: 100px; z-index: 101;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 6px; padding: 8px 14px; color: var(--text-primary); cursor: pointer;
+    font-family: var(--font-sans); font-size: 11px; font-weight: 500;
+    transition: all 0.2s; backdrop-filter: blur(12px);
+  }
+  #charts-toggle-btn:hover { background: rgba(20,28,50,0.95); border-color: rgba(0,229,255,0.4); color: var(--cyan); }
+  #charts-toggle-btn.active { background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.4); color: var(--cyan); }
+
+  /* MapLibre overrides */
+  .maplibregl-ctrl-top-right { top: 40px; }
+</style>
+</head>
+<body>
+
+<!-- Upload Screen -->
+<div id="upload-screen">
+  <div class="upload-container">
+    <h1>Honduras School Connectivity</h1>
+    <p>Baseline data (15,492 schools &amp; 7,297 towers) is embedded. Upload deterministic model results to launch the deployment timeline.</p>
+
+    <div class="upload-group-label">Deterministic Model with Milestones</div>
+    <div class="upload-zone" id="det1-school-zone">
+      <div class="label">Drop <span>MilestonesSchools.csv</span> here or click to browse</div>
+      <div class="status" id="det1-school-status"></div>
+      <input type="file" accept=".csv" id="det1-school-input">
+    </div>
+    <div class="upload-zone" id="det1-site-zone">
+      <div class="label">Drop <span>MilestonesSites.csv</span> here or click to browse</div>
+      <div class="status" id="det1-site-status"></div>
+      <input type="file" accept=".csv" id="det1-site-input">
+    </div>
+
+    <div class="upload-group-label">Deterministic Model without Milestones</div>
+    <div class="upload-zone" id="det2-school-zone">
+      <div class="label">Drop <span>NoMilestoneSchools.csv</span> here or click to browse</div>
+      <div class="status" id="det2-school-status"></div>
+      <input type="file" accept=".csv" id="det2-school-input">
+    </div>
+    <div class="upload-zone" id="det2-site-zone">
+      <div class="label">Drop <span>NoMilestoneSites.csv</span> here or click to browse</div>
+      <div class="status" id="det2-site-status"></div>
+      <input type="file" accept=".csv" id="det2-site-input">
+    </div>
+
+    <div class="loading-bar" id="loading-bar"><div class="fill" id="loading-fill"></div></div>
+    <button id="launch-btn">Launch Map</button>
+  </div>
+</div>
+
+<!-- Header Bar -->
+<div id="header" style="display:none;">
+  <div id="header-left">
+    <div class="mode-pills">
+      <div class="mode-pill active" id="mode-det" data-mode="deterministic">Deterministic</div>
+    </div>
+    <span id="header-title">HONDURAS SCHOOL CONNECTIVITY</span>
+  </div>
+  <div id="header-center">---.----, ---.----</div>
+  <div id="header-right">
+    <span id="header-zoom">Z 7.00</span>
+    <span><span class="live-dot"></span>LIVE</span>
+  </div>
+</div>
+
+<!-- Map Container -->
+<div id="map"></div>
+<div id="scanlines" style="display:none;"></div>
+
+<!-- Toggle Button -->
+<button id="toggle-controls" style="display:none;">&#9776; Controls</button>
+
+<!-- Control Panel -->
+<div id="controls" style="display:none;">
+  <div id="scenario-section">
+    <div class="section-title">Deterministic Scenario</div>
+    <div class="radio-group" id="scenario-group">
+      <div class="radio-btn scenario-btn active" data-scenario="1">With Milestones</div>
+      <div class="radio-btn scenario-btn" data-scenario="2">Without Milestones</div>
+    </div>
+  </div>
+
+  <div class="section-title">Layers</div>
+  <label class="check-row">
+    <input type="checkbox" id="layer-schools" checked>
+    <span class="dot" style="background:var(--cyan); box-shadow: 0 0 4px var(--cyan);"></span>
+    <span class="check-label">Schools</span>
+  </label>
+  <label class="check-row">
+    <input type="checkbox" id="layer-sites" checked>
+    <span class="dot diamond" style="background:var(--gold); box-shadow: 0 0 4px var(--gold);"></span>
+    <span class="check-label">Tower Sites</span>
+  </label>
+  <label class="check-row">
+    <input type="checkbox" id="layer-coverage" checked>
+    <span class="dot" style="background:rgba(255,214,0,0.3);border:1.5px solid var(--gold);"></span>
+    <span class="check-label">WISP Coverage</span>
+  </label>
+
+  <div class="section-title">Filters</div>
+  <div style="margin-bottom: 8px;">
+    <div class="check-label" style="margin-bottom: 3px; color: var(--text-secondary); font-size:10px;">Department</div>
+    <select id="filter-dept"><option value="">All Departments</option></select>
+  </div>
+
+
+</div>
+
+<!-- Stats Panel -->
+<div id="stats" style="display:none;">
+  <div class="section-title" style="margin-top:0;">Readout <span id="st-mode-label" style="font-size:8px;font-weight:400;letter-spacing:0;text-transform:none;"></span></div>
+
+  <div class="stat-row"><span class="stat-label">Total Schools</span><span class="stat-value white" id="st-total">0</span></div>
+  <div class="stat-bar-track"><div class="stat-bar-fill cyan" id="bar-equipped" style="width:0%;"></div></div>
+
+  <div class="stat-row"><span class="stat-label">Schools with Devices</span><span class="stat-value cyan" id="st-equipped">0</span></div>
+  <div class="stat-row"><span class="stat-label">Schools Connected</span><span class="stat-value cyan" id="st-connected">&mdash;</span></div>
+  <div class="stat-row"><span class="stat-label">Not Connected (Model)</span><span class="stat-value coral" id="st-notconnected">0</span></div>
+  <div class="stat-divider"></div>
+
+  <div class="stat-row" id="milestone-row" style="display:flex;"><span class="stat-label">Milestone Target</span><span class="stat-value white" id="st-milestone">0%</span></div>
+  <div class="stat-divider" id="milestone-divider"></div>
+
+  <div class="stat-row"><span class="stat-label">Towers Active</span><span class="stat-value amber" id="st-towers">0</span></div>
+  <div class="stat-row"><span class="stat-label">WISPs Active</span><span class="stat-value amber" id="st-wisps">0</span></div>
+  <div class="stat-bar-track"><div class="stat-bar-fill amber" id="bar-wisps" style="width:0%;"></div></div>
+
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">CAPEX This Year</span><span class="stat-value white" id="st-capex-yr">$0</span></div>
+  <div class="stat-row"><span class="stat-label">Cumulative CAPEX</span><span class="stat-value cyan" id="st-capex-cum">$0</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">OPEX This Year</span><span class="stat-value white" id="st-opex-yr">$0</span></div>
+  <div class="stat-row"><span class="stat-label">Cumulative OPEX</span><span class="stat-value cyan" id="st-opex-cum">$0</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Total Budget Spent</span><span class="stat-value" style="color:#FFD600;" id="st-total-spent">$0</span></div>
+
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Model Connectivity</span><span class="stat-value cyan" id="st-connectivity">0%</span></div>
+
+  <div class="stat-divider"></div>
+  <div class="section-title">Legend</div>
+  <div class="legend-row"><span class="legend-dot" style="background:var(--cyan);box-shadow:0 0 3px var(--cyan);"></span><span class="legend-label">Connected (Total)</span><span class="legend-count cyan" id="leg-conn">&mdash;</span></div>
+  <div class="legend-row"><span class="legend-dot" style="background:var(--equipped-blue);"></span><span class="legend-label">Has Devices (No Coverage)</span><span class="legend-count" style="color:var(--equipped-blue);" id="leg-equipped">0</span></div>
+  <div class="legend-row"><span class="legend-dot" style="background:var(--coral);box-shadow:0 0 3px var(--coral);"></span><span class="legend-label">Not Connected (Model)</span><span class="legend-count coral" id="leg-notconnected">0</span></div>
+  <div class="stat-divider"></div>
+  <div class="legend-row"><span class="legend-dot diamond" style="background:var(--gold);box-shadow:0 0 3px var(--gold);"></span><span class="legend-label">Towers (Total)</span><span class="legend-count amber" id="leg-towers">0</span></div>
+  <div class="legend-row"><span class="legend-dot" style="background:transparent;border:1px solid rgba(255,214,0,0.5);"></span><span class="legend-label">WISP Coverage</span><span class="legend-count" style="color:var(--text-secondary);" id="leg-coverage">0</span></div>
+  <div class="stat-divider"></div>
+  <div class="legend-row"><span class="legend-dot" style="background:var(--text-secondary);opacity:0.5;"></span><span class="legend-label">OPEX (This Year)</span><span class="legend-count" style="color:var(--text-primary);" id="leg-opex-yr">$0</span></div>
+  <div class="legend-row"><span class="legend-dot" style="background:var(--text-secondary);opacity:0.5;"></span><span class="legend-label">OPEX (Cumulative)</span><span class="legend-count cyan" id="leg-opex-cum">$0</span></div>
+</div>
+
+<!-- Charts Toggle Button -->
+<button id="charts-toggle-btn" style="display:none;">Charts</button>
+
+<!-- Charts Panel -->
+<div id="charts-panel">
+  <div class="chart-section">
+    <div class="section-title">CAPEX by Year</div>
+    <div class="bar-chart" id="capex-chart">
+      <div class="bar-group" data-yr="1"><div class="bar-value" id="capex-val-1">$0</div><div class="bar-stack"><div class="bar-segment devices" id="capex-dev-1" style="height:0;"></div><div class="bar-segment towers" id="capex-tow-1" style="height:0;"></div><div class="bar-segment wisps" id="capex-wisp-1" style="height:0;"></div></div><div class="bar-label">Yr 1</div></div>
+      <div class="bar-group" data-yr="2"><div class="bar-value" id="capex-val-2">$0</div><div class="bar-stack"><div class="bar-segment devices" id="capex-dev-2" style="height:0;"></div><div class="bar-segment towers" id="capex-tow-2" style="height:0;"></div><div class="bar-segment wisps" id="capex-wisp-2" style="height:0;"></div></div><div class="bar-label">Yr 2</div></div>
+      <div class="bar-group" data-yr="3"><div class="bar-value" id="capex-val-3">$0</div><div class="bar-stack"><div class="bar-segment devices" id="capex-dev-3" style="height:0;"></div><div class="bar-segment towers" id="capex-tow-3" style="height:0;"></div><div class="bar-segment wisps" id="capex-wisp-3" style="height:0;"></div></div><div class="bar-label">Yr 3</div></div>
+      <div class="bar-group" data-yr="4"><div class="bar-value" id="capex-val-4">$0</div><div class="bar-stack"><div class="bar-segment devices" id="capex-dev-4" style="height:0;"></div><div class="bar-segment towers" id="capex-tow-4" style="height:0;"></div><div class="bar-segment wisps" id="capex-wisp-4" style="height:0;"></div></div><div class="bar-label">Yr 4</div></div>
+      <div class="bar-group" data-yr="5"><div class="bar-value" id="capex-val-5">$0</div><div class="bar-stack"><div class="bar-segment devices" id="capex-dev-5" style="height:0;"></div><div class="bar-segment towers" id="capex-tow-5" style="height:0;"></div><div class="bar-segment wisps" id="capex-wisp-5" style="height:0;"></div></div><div class="bar-label">Yr 5</div></div>
+    </div>
+    <div class="chart-legend">
+      <div class="chart-legend-item"><div class="chart-legend-swatch" style="background:var(--cyan);"></div>Devices</div>
+      <div class="chart-legend-item"><div class="chart-legend-swatch" style="background:var(--gold);"></div>Towers</div>
+      <div class="chart-legend-item"><div class="chart-legend-swatch" style="background:#FF8A65;"></div>WISPs</div>
+    </div>
+  </div>
+
+  <div class="stat-divider" style="margin:12px 0;"></div>
+
+  <div class="chart-section">
+    <div class="section-title">OPEX by Year</div>
+    <div class="bar-chart" id="opex-chart">
+      <div class="bar-group" data-yr="1"><div class="bar-value" id="opex-val-1">$0</div><div class="bar-stack"><div class="bar-segment opex-bar" id="opex-bar-1" style="height:0;"></div></div><div class="bar-label">Yr 1</div></div>
+      <div class="bar-group" data-yr="2"><div class="bar-value" id="opex-val-2">$0</div><div class="bar-stack"><div class="bar-segment opex-bar" id="opex-bar-2" style="height:0;"></div></div><div class="bar-label">Yr 2</div></div>
+      <div class="bar-group" data-yr="3"><div class="bar-value" id="opex-val-3">$0</div><div class="bar-stack"><div class="bar-segment opex-bar" id="opex-bar-3" style="height:0;"></div></div><div class="bar-label">Yr 3</div></div>
+      <div class="bar-group" data-yr="4"><div class="bar-value" id="opex-val-4">$0</div><div class="bar-stack"><div class="bar-segment opex-bar" id="opex-bar-4" style="height:0;"></div></div><div class="bar-label">Yr 4</div></div>
+      <div class="bar-group" data-yr="5"><div class="bar-value" id="opex-val-5">$0</div><div class="bar-stack"><div class="bar-segment opex-bar" id="opex-bar-5" style="height:0;"></div></div><div class="bar-label">Yr 5</div></div>
+    </div>
+    <div class="chart-legend">
+      <div class="chart-legend-item"><div class="chart-legend-swatch" style="background:#AB47BC;"></div>OPEX ($3,820/school)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Scale Bar -->
+<div id="scale-bar" style="display:none;">
+  <div id="scale-line" style="width:60px;"></div>
+  <div id="scale-label">10 km</div>
+</div>
+
+<!-- Timeline Bar -->
+<div id="timeline">
+  <div id="timeline-inner">
+    <span class="tl-label">DEPLOY</span>
+    <button id="play-btn">&#9654;</button>
+    <div class="year-pills">
+      <div class="year-pill" data-year="0"><span class="yr-num">0</span><span class="yr-label">Baseline</span></div>
+      <div class="year-connector"></div>
+      <div class="year-pill past active" data-year="1"><span class="yr-num">1</span><span class="yr-label">Year</span></div>
+      <div class="year-connector"></div>
+      <div class="year-pill" data-year="2"><span class="yr-num">2</span><span class="yr-label">Year</span></div>
+      <div class="year-connector"></div>
+      <div class="year-pill" data-year="3"><span class="yr-num">3</span><span class="yr-label">Year</span></div>
+      <div class="year-connector"></div>
+      <div class="year-pill" data-year="4"><span class="yr-num">4</span><span class="yr-label">Year</span></div>
+      <div class="year-connector"></div>
+      <div class="year-pill" data-year="5"><span class="yr-num">5</span><span class="yr-label">Year</span></div>
+    </div>
+    <button class="speed-btn" id="speed-btn">1.5s</button>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div id="tt-body"></div>
+</div>
+
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.4/dist.min.js"></script>
+<script src="baseline_data.js"></script>
+<script>
+(function() {
+  // ─── State ───
+  let currentMode = 'deterministic';
+
+  // Deterministic data (uploaded) — two separate scenario pairs
+  let det1Schools = null, det1Sites = null;
+  let det2Schools = null, det2Sites = null;
+
+  let schoolsByScenario = {}, sitesByScenario = {};
+
+  // ─── Baseline data (embedded from BASELINE_SCHOOLS / EXISTING_TOWERS) ───
+  // Format: [lat, lon, name, dept, connected(0/1), has_device(0/1)]
+  const baselineSchoolObjects = BASELINE_SCHOOLS.map(s => ({
+    lat: s[0], lon: s[1], name: s[2], dept: s[3], connected: s[4], has_device: s[5]
+  }));
+  const baselineTowerObjects = EXISTING_TOWERS.map(t => ({ lat: t[0], lon: t[1] }));
+  const TOTAL_BASELINE_SCHOOLS = baselineSchoolObjects.length;
+  const BASELINE_CONNECTED = baselineSchoolObjects.filter(s => s.connected === 1).length;
+  let map = null, deckOverlay = null;
+  let currentScenario = 1; // With Milestones
+  let currentYear = 5;
+  let isPlaying = false;
+  let playInterval = null;
+  let playSpeed = 1500;
+  const speeds = [1500, 1000, 600];
+  let speedIdx = 0;
+
+  // Milestone fractions
+  const milestoneFracs = { 0: 0, 1: 0.10, 2: 0.15, 3: 0.20, 4: 0.25, 5: 0.30 };
+
+  // CAPEX costs
+  const COST_DEVICE = 7300;
+  const COST_TOWER = 100000;
+  const COST_WISP = 5500;
+
+  // OPEX cost (annual per connected school)
+  const OPEX_PER_SCHOOL = 3820;
+
+  // Model denominator for connectivity rate
+  const MODEL_SCHOOL_COUNT = 12578;  // |S| = unconnected schools entering the optimisation
+  // Note: BASELINE_CONNECTED is already computed at line 504 from baseline_data.js
+
+  // ─── CSV Upload ───
+  const launchBtn = document.getElementById('launch-btn');
+
+  function parseCSV(file, cb) {
+    Papa.parse(file, { header: true, skipEmptyLines: true, dynamicTyping: true, complete: r => cb(r.data) });
+  }
+
+  function setupUpload(inputId, zoneId, statusId, label, cb) {
+    document.getElementById(inputId).addEventListener('change', e => {
+      const file = e.target.files[0]; if (!file) return;
+      parseCSV(file, data => {
+        const filtered = data.filter(d => d.lat != null && d.lon != null);
+        document.getElementById(zoneId).classList.add('loaded');
+        document.getElementById(statusId).textContent = filtered.length.toLocaleString() + ' ' + label + ' rows loaded';
+        cb(filtered);
+        checkReady();
+      });
+    });
+  }
+
+  setupUpload('det1-school-input', 'det1-school-zone', 'det1-school-status', 'school (with milestones)', d => { det1Schools = d; });
+  setupUpload('det1-site-input', 'det1-site-zone', 'det1-site-status', 'site (with milestones)', d => { det1Sites = d; });
+  setupUpload('det2-school-input', 'det2-school-zone', 'det2-school-status', 'school (without milestones)', d => { det2Schools = d; });
+  setupUpload('det2-site-input', 'det2-site-zone', 'det2-site-status', 'site (without milestones)', d => { det2Sites = d; });
+
+  function hasBothPairs() { return det1Schools && det1Sites && det2Schools && det2Sites; }
+
+  function checkReady() {
+    if (hasBothPairs()) {
+      launchBtn.classList.add('ready');
+    } else {
+      launchBtn.classList.remove('ready');
+    }
+  }
+
+  launchBtn.addEventListener('click', () => {
+    if (!hasBothPairs()) return;
+    const bar = document.getElementById('loading-bar');
+    const fill = document.getElementById('loading-fill');
+    bar.classList.add('active');
+    fill.style.width = '30%';
+
+    // Map each deterministic pair to a scenario
+    schoolsByScenario = { 1: det1Schools, 2: det2Schools };
+    sitesByScenario = { 1: det1Sites, 2: det2Sites };
+
+    // Departments from all data (baseline + deterministic)
+    const deptSet = new Set();
+    baselineSchoolObjects.forEach(d => { if (d.dept) deptSet.add(d.dept); });
+    det1Schools.forEach(d => { if (d.dept) deptSet.add(d.dept); });
+    det2Schools.forEach(d => { if (d.dept) deptSet.add(d.dept); });
+    const departments = [...deptSet].sort();
+    const sel = document.getElementById('filter-dept');
+    departments.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
+
+    // Set up mode
+    currentMode = 'deterministic';
+    updateModeUI();
+
+    fill.style.width = '70%';
+    setTimeout(() => {
+      fill.style.width = '100%';
+      setTimeout(() => {
+        document.getElementById('upload-screen').classList.add('hidden');
+        document.getElementById('header').style.display = '';
+        document.getElementById('controls').style.display = '';
+        document.getElementById('stats').style.display = '';
+        document.getElementById('toggle-controls').style.display = '';
+        document.getElementById('scale-bar').style.display = '';
+        document.getElementById('charts-toggle-btn').style.display = 'block';
+        document.getElementById('scanlines').style.display = '';
+        document.getElementById('timeline').style.display = 'flex';
+        setYear(0);
+        initMap();
+      }, 300);
+    }, 200);
+  });
+
+  // ─── Mode switching ───
+  function updateModeUI() {
+    // Show/hide scenario radio buttons
+    const scenarioSection = document.getElementById('scenario-section');
+    scenarioSection.style.display = '';
+
+    // Update mode label in stats
+    document.getElementById('st-mode-label').textContent = '(Deterministic)';
+  }
+
+  // ─── Controls ───
+  document.getElementById('toggle-controls').addEventListener('click', () => {
+    document.getElementById('controls').classList.toggle('collapsed');
+  });
+
+  // Scenario radio
+  document.querySelectorAll('.scenario-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentScenario = parseInt(btn.dataset.scenario);
+      scheduleUpdate();
+    });
+  });
+
+  // Layer toggles
+  ['layer-schools', 'layer-sites', 'layer-coverage'].forEach(id => {
+    document.getElementById(id).addEventListener('change', scheduleUpdate);
+  });
+  document.getElementById('filter-dept').addEventListener('change', scheduleUpdate);
+
+  // ─── Year Timeline ───
+  const yearPills = document.querySelectorAll('.year-pill');
+  const yearConnectors = document.querySelectorAll('.year-connector');
+
+  function setYear(yr) {
+    currentYear = yr;
+    yearPills.forEach(p => {
+      const y = parseInt(p.dataset.year);
+      p.classList.remove('active', 'past');
+      if (y === yr) p.classList.add('active');
+      else if (y < yr) p.classList.add('past');
+    });
+    yearConnectors.forEach((c, i) => {
+      c.classList.toggle('lit', i < yr);
+    });
+    scheduleUpdate();
+  }
+
+  yearPills.forEach(p => {
+    p.addEventListener('click', () => {
+      stopPlay();
+      setYear(parseInt(p.dataset.year));
+    });
+  });
+
+  // Play button
+  const playBtn = document.getElementById('play-btn');
+  playBtn.addEventListener('click', () => {
+    if (isPlaying) { stopPlay(); return; }
+    startPlay();
+  });
+
+  function startPlay() {
+    isPlaying = true;
+    playBtn.classList.add('playing');
+    playBtn.innerHTML = '&#9646;&#9646;';
+    let yr = 0;
+    setYear(yr);
+    playInterval = setInterval(() => {
+      yr++;
+      if (yr > 5) { stopPlay(); return; }
+      setYear(yr);
+    }, playSpeed);
+  }
+
+  function stopPlay() {
+    isPlaying = false;
+    playBtn.classList.remove('playing');
+    playBtn.innerHTML = '&#9654;';
+    if (playInterval) { clearInterval(playInterval); playInterval = null; }
+  }
+
+  // Speed button
+  const speedBtn = document.getElementById('speed-btn');
+  speedBtn.addEventListener('click', () => {
+    speedIdx = (speedIdx + 1) % speeds.length;
+    playSpeed = speeds[speedIdx];
+    const labels = ['1.5s', '1.0s', '0.6s'];
+    speedBtn.textContent = labels[speedIdx];
+    if (isPlaying) { stopPlay(); startPlay(); }
+  });
+
+  // ─── Update scheduling ───
+  let updateTimer = null;
+  function scheduleUpdate() { clearTimeout(updateTimer); updateTimer = setTimeout(updateLayers, 60); }
+
+  // ─── Deterministic cumulative state helpers ───
+  // Deterministic CSVs use: got_dev + year (schools), got_tower + tower_year, got_wisp + wisp_year (sites)
+  function hasDeviceByYear(school, year) {
+    if (school.had_dev === 1) return true;
+    return school.got_dev === 1 && school.year > 0 && school.year <= year;
+  }
+
+  function deviceYear(school) {
+    if (school.had_dev === 1) return 0;
+    if (school.got_dev === 1 && school.year > 0) return school.year;
+    return -1;
+  }
+
+  function hasTowerByYear(site, year) {
+    if (site.is_existing === 1) return true;
+    return site.got_tower === 1 && site.tower_year > 0 && site.tower_year <= year;
+  }
+
+  function towerBuiltYear(site) {
+    if (site.got_tower === 1 && site.tower_year > 0) return site.tower_year;
+    return -1;
+  }
+
+  function hasWispByYear(site, year) {
+    return site.got_wisp === 1 && site.wisp_year > 0 && site.wisp_year <= year;
+  }
+
+  function wispInstalledYear(site) {
+    if (site.got_wisp === 1 && site.wisp_year > 0) return site.wisp_year;
+    return -1;
+  }
+
+  function gotTowerThisYear(site, year) {
+    return site.got_tower === 1 && site.tower_year === year;
+  }
+
+  function gotWispThisYear(site, year) {
+    return site.got_wisp === 1 && site.wisp_year === year;
+  }
+
+  function gotDeviceThisYear(school, year) {
+    return school.got_dev === 1 && school.year === year;
+  }
+
+  // ─── WISP range check (10km) ───
+  function isInWispRange(schoolLat, schoolLon, wispSites) {
+    for (let i = 0; i < wispSites.length; i++) {
+      const s = wispSites[i];
+      const dlat = schoolLat - s.lat;
+      const dlon = (schoolLon - s.lon) * Math.cos(schoolLat * Math.PI / 180);
+      if ((dlat * dlat + dlon * dlon) * 111.32 * 111.32 <= 100) return true;
+    }
+    return false;
+  }
+
+  // ─── Circle generation ───
+  function makeCircle(lon, lat, radiusKm, n) {
+    n = n || 32;
+    const coords = [];
+    const degLat = radiusKm / 111.32;
+    const degLon = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+    for (let i = 0; i <= n; i++) {
+      const angle = (i / n) * 2 * Math.PI;
+      coords.push([lon + degLon * Math.sin(angle), lat + degLat * Math.cos(angle)]);
+    }
+    return coords;
+  }
+
+  // ─── Scale bar ───
+  function updateScaleBar() {
+    if (!map) return;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const metersPerPixel = 156543.03392 * Math.cos(center.lat * Math.PI / 180) / Math.pow(2, zoom);
+    const targetMeters = metersPerPixel * 60;
+    const niceDistances = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+    let bestKm = 10;
+    for (const d of niceDistances) {
+      if (d * 1000 >= targetMeters * 0.4 && d * 1000 <= targetMeters * 2) { bestKm = d; break; }
+    }
+    const pxWidth = (bestKm * 1000) / metersPerPixel;
+    document.getElementById('scale-line').style.width = Math.round(pxWidth) + 'px';
+    document.getElementById('scale-label').textContent = bestKm >= 1 ? bestKm + ' km' : (bestKm * 1000) + ' m';
+  }
+
+  // ─── Charts toggle button ───
+  let chartsVisible = false;
+  document.getElementById('charts-toggle-btn').addEventListener('click', function() {
+    chartsVisible = !chartsVisible;
+    document.getElementById('charts-panel').style.display = chartsVisible ? 'block' : 'none';
+    this.classList.toggle('active', chartsVisible);
+    if (chartsVisible) updateCharts();
+  });
+
+  // Minimum visible bar height (px) for non-zero values
+  const MIN_BAR_PX = 3;
+  function barH(value, scale) {
+    if (value <= 0) return 0;
+    return Math.max(value * scale, MIN_BAR_PX);
+  }
+
+  function updateCharts() {
+    if (!chartsVisible) return;
+    const sc = currentScenario;
+    const schools = schoolsByScenario[sc] || [];
+    const sites = sitesByScenario[sc] || [];
+    const yr = currentYear;
+
+    // ─── Compute all 5 years of CAPEX ───
+    const capexData = [];
+    let maxCapex = 1;
+    for (let y = 1; y <= 5; y++) {
+      let devs = 0, towers = 0, wisps = 0;
+      schools.forEach(s => { if (s.got_dev === 1 && (s.year === y || (s.year === 0 && y === 1))) devs++; });
+      sites.forEach(s => {
+        if (s.got_tower === 1 && s.tower_year === y) towers++;
+        if (s.got_wisp === 1 && s.wisp_year === y) wisps++;
+      });
+      const devCost = devs * COST_DEVICE;
+      const towCost = towers * COST_TOWER;
+      const wispCost = wisps * COST_WISP;
+      const total = devCost + towCost + wispCost;
+      if (total > maxCapex) maxCapex = total;
+      capexData.push({ devCost, towCost, wispCost, total });
+    }
+
+    // ─── Compute all 5 years of OPEX ───
+    const opexData = [];
+    let maxOpex = 1;
+    for (let y = 1; y <= 5; y++) {
+      let opex = 0;
+      if (y >= 2) {
+        const connPrev = schools.filter(s => s.connected === 1 && s.year > 0 && s.year <= (y - 1)).length;
+        opex = connPrev * OPEX_PER_SCHOOL;
+      }
+      if (opex > maxOpex) maxOpex = opex;
+      opexData.push(opex);
+    }
+
+    // ─── Animate: reveal bars up to current year ───
+    const capexScale = 100 / maxCapex;
+    const opexScale = 100 / maxOpex;
+
+    for (let y = 1; y <= 5; y++) {
+      const d = capexData[y - 1];
+      const opex = opexData[y - 1];
+      const show = y <= yr;
+      const group = document.getElementById('capex-val-' + y).parentElement;
+      const oGroup = document.getElementById('opex-val-' + y).parentElement;
+
+      // CAPEX bars
+      document.getElementById('capex-dev-' + y).style.height = show ? barH(d.devCost, capexScale) + 'px' : '0';
+      document.getElementById('capex-tow-' + y).style.height = show ? barH(d.towCost, capexScale) + 'px' : '0';
+      document.getElementById('capex-wisp-' + y).style.height = show ? barH(d.wispCost, capexScale) + 'px' : '0';
+      document.getElementById('capex-val-' + y).textContent = show ? '$' + d.total.toLocaleString() : '';
+      group.classList.toggle('active', y === yr);
+
+      // OPEX bars
+      document.getElementById('opex-bar-' + y).style.height = show ? barH(opex, opexScale) + 'px' : '0';
+      document.getElementById('opex-val-' + y).textContent = show ? '$' + opex.toLocaleString() : '';
+      oGroup.classList.toggle('active', y === yr);
+    }
+  }
+
+  // ─── Stats update helper ───
+  function updateStats(totalSchools, totalEquipped, totalConnected, modelNotConnected, towerCount, wispCount, capexYr, capexCum, equippedOnlyCount, opexYr, opexCum) {
+    document.getElementById('st-total').textContent = totalSchools.toLocaleString();
+    document.getElementById('st-equipped').textContent = totalEquipped.toLocaleString();
+    document.getElementById('st-connected').textContent = totalConnected.toLocaleString();
+    document.getElementById('leg-conn').textContent = totalConnected.toLocaleString();
+    document.getElementById('st-notconnected').textContent = modelNotConnected.toLocaleString();
+    document.getElementById('leg-notconnected').textContent = modelNotConnected.toLocaleString();
+    document.getElementById('st-towers').textContent = towerCount.toLocaleString();
+    document.getElementById('st-wisps').textContent = wispCount.toLocaleString();
+    document.getElementById('st-capex-yr').textContent = '$' + capexYr.toLocaleString();
+    document.getElementById('st-capex-cum').textContent = '$' + capexCum.toLocaleString();
+    document.getElementById('st-opex-yr').textContent = '$' + (opexYr || 0).toLocaleString();
+    document.getElementById('st-opex-cum').textContent = '$' + (opexCum || 0).toLocaleString();
+    document.getElementById('st-total-spent').textContent = '$' + (capexCum + (opexCum || 0)).toLocaleString();
+    document.getElementById('bar-equipped').style.width = (totalSchools > 0 ? (totalConnected / totalSchools * 100) : 0) + '%';
+    document.getElementById('leg-equipped').textContent = equippedOnlyCount.toLocaleString();
+    document.getElementById('leg-towers').textContent = towerCount.toLocaleString();
+    document.getElementById('leg-coverage').textContent = wispCount.toLocaleString();
+    document.getElementById('leg-opex-yr').textContent = '$' + (opexYr || 0).toLocaleString();
+    document.getElementById('leg-opex-cum').textContent = '$' + (opexCum || 0).toLocaleString();
+
+    // Model connectivity rate
+    const modelConnected = totalConnected - BASELINE_CONNECTED;
+    const connectivityRate = MODEL_SCHOOL_COUNT > 0 ? (modelConnected / MODEL_SCHOOL_COUNT * 100) : 0;
+    document.getElementById('st-connectivity').textContent = connectivityRate.toFixed(1) + '%';
+
+    // Milestone — only show for "With Milestones" (scenario 1)
+    const milestoneRow = document.getElementById('milestone-row');
+    const milestoneDivider = document.getElementById('milestone-divider');
+    if (currentScenario === 1) {
+      milestoneRow.style.display = 'flex';
+      milestoneDivider.style.display = '';
+      const milestone = milestoneFracs[currentYear] || 0;
+      document.getElementById('st-milestone').textContent = Math.round(milestone * 100) + '%';
+    } else {
+      milestoneRow.style.display = 'none';
+      milestoneDivider.style.display = 'none';
+    }
+  }
+
+  // ─── Main render ───
+  function updateLayers() {
+    if (!deckOverlay) return;
+    updateDeterministicLayers();
+  }
+
+  // ─── Deterministic render (with embedded baseline data) ───
+  function updateDeterministicLayers() {
+    if (!hasBothPairs()) return;
+    const yr = currentYear;
+    const sc = currentScenario;
+    const dept = document.getElementById('filter-dept').value;
+    const showSchools = document.getElementById('layer-schools').checked;
+    const showSites = document.getElementById('layer-sites').checked;
+    const showCoverage = document.getElementById('layer-coverage').checked;
+
+    const layers = [];
+
+    // ─── Baseline schools (always present) ───
+    let bSchools = baselineSchoolObjects;
+    if (dept) bSchools = bSchools.filter(d => d.dept === dept);
+    const baselineConnected = bSchools.filter(s => s.connected === 1);
+    const baselineWithDevice = bSchools.filter(s => s.has_device === 1 && s.connected === 0);
+    const baselineNoDevice = bSchools.filter(s => s.has_device === 0 && s.connected === 0);
+
+    // ─── Baseline towers (always present) ───
+    let bTowers = baselineTowerObjects;
+
+    // ─── Year 0: Just baseline data ───
+    if (yr === 0) {
+      const totalConn = baselineConnected.length;
+      const totalEquipped = totalConn + baselineWithDevice.length;
+      // Not connected from model: all model schools start unconnected at year 0
+      let modelSchools = schoolsByScenario[sc] || [];
+      if (dept) modelSchools = modelSchools.filter(d => d.dept === dept);
+      updateStats(bSchools.length, totalEquipped, totalConn, modelSchools.length,
+                  bTowers.length, 0, 0, 0, baselineWithDevice.length, 0, 0);
+      updateCharts();
+      document.getElementById('bar-wisps').style.width = '0%';
+
+      if (showSchools) {
+        if (baselineNoDevice.length > 0) {
+          layers.push(new deck.ScatterplotLayer({
+            id: 'baseline-schools-nodev', data: baselineNoDevice,
+            getPosition: d => [d.lon, d.lat],
+            getRadius: 50, radiusMinPixels: 1.5, radiusMaxPixels: 3,
+            getFillColor: [255, 68, 68, 100],
+            pickable: true, autoHighlight: true, highlightColor: [255, 68, 68, 80],
+          }));
+        }
+        if (baselineWithDevice.length > 0) {
+          layers.push(new deck.ScatterplotLayer({
+            id: 'baseline-schools-equipped', data: baselineWithDevice,
+            getPosition: d => [d.lon, d.lat],
+            getRadius: 50, radiusMinPixels: 2, radiusMaxPixels: 5,
+            getFillColor: [66, 133, 244, 200],
+            pickable: true, autoHighlight: true, highlightColor: [66, 133, 244, 100],
+          }));
+        }
+        if (baselineConnected.length > 0) {
+          layers.push(new deck.ScatterplotLayer({
+            id: 'baseline-schools-connected', data: baselineConnected,
+            getPosition: d => [d.lon, d.lat],
+            getRadius: 50, radiusMinPixels: 2, radiusMaxPixels: 5,
+            getFillColor: [0, 230, 118, 220],
+            pickable: true, autoHighlight: true, highlightColor: [0, 230, 118, 120],
+          }));
+        }
+      }
+
+      if (showSites && bTowers.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'baseline-towers', data: bTowers,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 150, radiusMinPixels: 2, radiusMaxPixels: 5,
+          getFillColor: [255, 214, 0, 180],
+          pickable: true, autoHighlight: true, highlightColor: [255, 214, 0, 120],
+        }));
+      }
+
+      deckOverlay.setProps({ layers });
+      return;
+    }
+
+    // ─── Years 1-5: Deterministic results overlaid on baseline ───
+    let schools = schoolsByScenario[sc] || [];
+    let sites = sitesByScenario[sc] || [];
+    if (dept) {
+      schools = schools.filter(d => d.dept === dept);
+      sites = sites.filter(d => d.dept === dept);
+    }
+
+    // Deterministic site analysis
+    const activeSites = [];
+    const wispSites = [];
+    let newTowersThisYr = 0, newWispsThisYr = 0, newDevsThisYr = 0;
+
+    sites.forEach(s => {
+      const hasTower = hasTowerByYear(s, yr);
+      const hasWisp = hasWispByYear(s, yr);
+      if (hasTower) {
+        activeSites.push({ ...s, _hasTower: true, _hasWisp: hasWisp, _newThisYear: gotTowerThisYear(s, yr), _wispThisYear: gotWispThisYear(s, yr) });
+      }
+      if (hasWisp) wispSites.push(s);
+      if (gotTowerThisYear(s, yr)) newTowersThisYr++;
+      if (gotWispThisYear(s, yr)) newWispsThisYr++;
+    });
+
+    // Deterministic school categorization
+    // CSV tells us: connected=1 at year=Y means school becomes connected at year Y
+    const detConnected = [];
+    const detEquipped = [];
+    const detNotEquipped = [];
+
+    schools.forEach(s => {
+      const isConn = s.connected === 1 && s.year > 0 && s.year <= yr;
+      const hasDev = hasDeviceByYear(s, yr);
+      if (isConn) detConnected.push(s);
+      else if (hasDev) detEquipped.push(s);
+      else detNotEquipped.push(s);
+    });
+
+    schools.forEach(s => { if (gotDeviceThisYear(s, yr)) newDevsThisYr++; });
+
+    // ─── Combined stats: baseline + deterministic ───
+    const totalConnected = baselineConnected.length + detConnected.length;
+    const totalEquippedOnly = baselineWithDevice.length + detEquipped.length;
+    const totalEquipped = totalConnected + totalEquippedOnly;
+    const allTowers = bTowers.length + activeSites.length;
+
+    // CAPEX (only deterministic new equipment)
+    const capexThisYear = newDevsThisYr * COST_DEVICE + newTowersThisYr * COST_TOWER + newWispsThisYr * COST_WISP;
+    let cumCapex = 0;
+    for (let y = 1; y <= yr; y++) {
+      let devs = 0, towers = 0, wisps = 0;
+      schools.forEach(s => { if (s.got_dev === 1 && (s.year === y || (s.year === 0 && y === 1))) devs++; });
+      sites.forEach(s => { if (s.got_tower === 1 && s.tower_year === y) towers++; if (s.got_wisp === 1 && s.wisp_year === y) wisps++; });
+      cumCapex += devs * COST_DEVICE + towers * COST_TOWER + wisps * COST_WISP;
+    }
+
+    // OPEX: $3,820 per model-connected school at end of previous year
+    // A school is connected at year Y if connected=1 AND year <= Y
+    function countModelConnectedByYear(schools, y) {
+      return schools.filter(s => s.connected === 1 && s.year > 0 && s.year <= y).length;
+    }
+    const opexThisYear = (yr <= 1) ? 0 : countModelConnectedByYear(schools, yr - 1) * OPEX_PER_SCHOOL;
+    let cumOpex = 0;
+    for (let y = 2; y <= yr; y++) {
+      cumOpex += countModelConnectedByYear(schools, y - 1) * OPEX_PER_SCHOOL;
+    }
+
+    updateStats(bSchools.length, totalEquipped, totalConnected, detNotEquipped.length,
+                allTowers, wispSites.length, capexThisYear, cumCapex, totalEquippedOnly, opexThisYear, cumOpex);
+    updateCharts();
+
+    const totalSites = sites.length;
+    document.getElementById('bar-wisps').style.width = (totalSites > 0 ? (wispSites.length / totalSites * 100) : 0) + '%';
+
+    // ─── Build deck.gl layers ───
+
+    // 0. Baseline towers (always shown, dimmer)
+    if (showSites && bTowers.length > 0) {
+      layers.push(new deck.ScatterplotLayer({
+        id: 'baseline-towers', data: bTowers,
+        getPosition: d => [d.lon, d.lat],
+        getRadius: 150, radiusMinPixels: 2, radiusMaxPixels: 5,
+        getFillColor: [255, 214, 0, 100],
+        pickable: true, autoHighlight: true, highlightColor: [255, 214, 0, 80],
+      }));
+    }
+
+    // 1. WISP Coverage circles
+    if (showCoverage) {
+      const allWispSites = (sitesByScenario[sc] || []).filter(s => {
+        if (dept && s.dept !== dept) return false;
+        return hasWispByYear(s, yr);
+      });
+      if (allWispSites.length > 0) {
+        const coverageData = allWispSites.map(s => ({
+          polygon: makeCircle(s.lon, s.lat, 10),
+          _newThisYear: gotWispThisYear(s, yr)
+        }));
+        layers.push(new deck.PolygonLayer({
+          id: 'coverage', data: coverageData,
+          getPolygon: d => d.polygon,
+          getFillColor: [255, 214, 0, 10],
+          getLineColor: [255, 214, 0, 50],
+          getLineWidth: 1, lineWidthMinPixels: 1,
+          filled: true, stroked: true, pickable: false,
+          parameters: { depthTest: false },
+        }));
+      }
+    }
+
+    // 2. Baseline schools
+    if (showSchools) {
+      // Baseline connected (always green)
+      if (baselineConnected.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'baseline-schools-connected', data: baselineConnected,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 50, radiusMinPixels: 2, radiusMaxPixels: 5,
+          getFillColor: [0, 230, 118, 150],
+          pickable: true, autoHighlight: true, highlightColor: [0, 230, 118, 80],
+        }));
+      }
+      // Baseline with device but not connected (blue)
+      if (baselineWithDevice.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'baseline-schools-equipped', data: baselineWithDevice,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 50, radiusMinPixels: 1.5, radiusMaxPixels: 4,
+          getFillColor: [66, 133, 244, 150],
+          pickable: true, autoHighlight: true, highlightColor: [66, 133, 244, 80],
+        }));
+      }
+
+      // 3. Deterministic school results
+      if (detNotEquipped.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'schools-notequipped', data: detNotEquipped,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 50, radiusMinPixels: 1.5, radiusMaxPixels: 3,
+          getFillColor: [255, 68, 68, 100],
+          pickable: true, autoHighlight: true, highlightColor: [255, 68, 68, 80],
+        }));
+      }
+      if (detEquipped.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'schools-equipped', data: detEquipped,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 50, radiusMinPixels: 2, radiusMaxPixels: 5,
+          getFillColor: [66, 133, 244, 200],
+          pickable: true, autoHighlight: true, highlightColor: [66, 133, 244, 100],
+        }));
+      }
+      if (detConnected.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'schools-conn-glow', data: detConnected,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 300, radiusMinPixels: 4, radiusMaxPixels: 10,
+          getFillColor: [0, 230, 118, 15], pickable: false,
+        }));
+        layers.push(new deck.ScatterplotLayer({
+          id: 'schools-connected', data: detConnected,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 50, radiusMinPixels: 2, radiusMaxPixels: 5,
+          getFillColor: [0, 230, 118, 220],
+          pickable: true, autoHighlight: true, highlightColor: [0, 230, 118, 120],
+        }));
+      }
+    }
+
+    // 4. Deterministic Tower Sites
+    if (showSites && activeSites.length > 0) {
+      const towerOnlySites = activeSites.filter(s => !s._hasWisp);
+      const wispActiveSites = activeSites.filter(s => s._hasWisp);
+
+      if (towerOnlySites.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'sites-tower', data: towerOnlySites,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 200, radiusMinPixels: 4, radiusMaxPixels: 8,
+          getFillColor: [255, 214, 0, 220],
+          getLineColor: [180, 150, 0, 255], lineWidthMinPixels: 1, stroked: true,
+          pickable: true, autoHighlight: true, highlightColor: [255, 214, 0, 120],
+        }));
+      }
+
+      if (wispActiveSites.length > 0) {
+        layers.push(new deck.ScatterplotLayer({
+          id: 'sites-wisp-glow', data: wispActiveSites,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 600, radiusMinPixels: 10, radiusMaxPixels: 20,
+          getFillColor: [255, 214, 0, 20], pickable: false,
+        }));
+        layers.push(new deck.ScatterplotLayer({
+          id: 'sites-wisp', data: wispActiveSites,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 250, radiusMinPixels: 5, radiusMaxPixels: 10,
+          getFillColor: [255, 255, 240, 255],
+          getLineColor: [255, 214, 0, 255], lineWidthMinPixels: 2, stroked: true,
+          pickable: true, autoHighlight: true, highlightColor: [255, 255, 200, 120],
+        }));
+      }
+    }
+
+    deckOverlay.setProps({ layers });
+  }
+
+  // ─── Tooltip ───
+  const tooltip = document.getElementById('tooltip');
+
+  function handleHover(info) {
+    if (!info.object) { tooltip.style.display = 'none'; return; }
+
+    const d = info.object;
+    const layerId = info.layer ? info.layer.id : '';
+    tooltip.style.display = 'block';
+    const x = Math.min(info.x + 16, window.innerWidth - 340);
+    const y = Math.min(info.y + 16, window.innerHeight - 200);
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+
+    const body = document.getElementById('tt-body');
+
+    // ─── Baseline tooltips ───
+    if (layerId === 'baseline-towers') {
+      document.getElementById('tt-name').textContent = 'Existing Cell Tower';
+      tooltip.style.borderLeftColor = 'var(--gold)';
+      body.innerHTML =
+        '<div class="tt-row"><span class="tt-key">Status</span><span class="tt-val">Pre-existing</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Coordinates</span><span class="tt-val">' + Number(d.lat).toFixed(4) + ', ' + Number(d.lon).toFixed(4) + '</span></div>';
+    } else if (layerId.startsWith('baseline-schools')) {
+      document.getElementById('tt-name').textContent = d.name || 'Unknown';
+      let statusText, statusColor;
+      if (layerId.includes('connected')) {
+        statusText = 'Connected (Baseline)'; statusColor = 'var(--cyan)';
+      } else if (layerId.includes('equipped')) {
+        statusText = 'Has Device (Not Connected)'; statusColor = 'var(--equipped-blue)';
+      } else {
+        statusText = 'Not Connected'; statusColor = 'var(--coral)';
+      }
+      tooltip.style.borderLeftColor = statusColor;
+      body.innerHTML =
+        '<div class="tt-row"><span class="tt-key">Department</span><span class="tt-val">' + (d.dept || '') + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" style="color:' + statusColor + '"><span class="tt-status-dot" style="background:' + statusColor + ';box-shadow:0 0 4px ' + statusColor + ';"></span>' + statusText + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Device</span><span class="tt-val">' + (d.has_device ? 'Yes' : 'No') + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Coordinates</span><span class="tt-val">' + Number(d.lat).toFixed(4) + ', ' + Number(d.lon).toFixed(4) + '</span></div>';
+
+    // ─── Deterministic tooltips ───
+    } else if (layerId.startsWith('det-sites') || layerId.startsWith('sites')) {
+      document.getElementById('tt-name').textContent = 'Site ' + (d.site_id || '');
+      tooltip.style.borderLeftColor = 'var(--gold)';
+      const existing = d.is_existing === 1 ? 'Existing' : 'New';
+      const tyr = towerBuiltYear(d);
+      const wyr = wispInstalledYear(d);
+      body.innerHTML =
+        '<div class="tt-row"><span class="tt-key">Type</span><span class="tt-val">' + existing + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Department</span><span class="tt-val">' + (d.dept || '') + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Tower Built</span><span class="tt-val">' + (d.is_existing === 1 ? 'Pre-existing' : (tyr > 0 ? 'Year ' + tyr : 'None')) + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">WISP Installed</span><span class="tt-val">' + (wyr > 0 ? 'Year ' + wyr : 'None') + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Coordinates</span><span class="tt-val">' + d.lat.toFixed(4) + ', ' + d.lon.toFixed(4) + '</span></div>';
+    } else if (layerId.startsWith('det-schools') || layerId.startsWith('schools')) {
+      document.getElementById('tt-name').textContent = d.name || 'Unknown';
+      const devYr = deviceYear(d);
+      let statusText, statusColor;
+
+      if (layerId.includes('connected') || layerId.includes('conn-glow')) {
+        statusText = 'Connected'; statusColor = 'var(--cyan)';
+      } else if (layerId.includes('equipped')) {
+        statusText = 'Equipped (no coverage)'; statusColor = 'var(--equipped-blue)';
+      } else {
+        statusText = 'No Connect'; statusColor = 'var(--coral)';
+      }
+
+      tooltip.style.borderLeftColor = statusColor;
+      body.innerHTML =
+        '<div class="tt-row"><span class="tt-key">Department</span><span class="tt-val">' + (d.dept || '') + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" style="color:' + statusColor + '"><span class="tt-status-dot" style="background:' + statusColor + ';box-shadow:0 0 4px ' + statusColor + ';"></span>' + statusText + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Device</span><span class="tt-val">' + (devYr === 0 ? 'Had at baseline' : (devYr > 0 ? 'Installed Year ' + devYr : 'None')) + '</span></div>' +
+        '<div class="tt-row"><span class="tt-key">Coordinates</span><span class="tt-val">' + d.lat.toFixed(4) + ', ' + d.lon.toFixed(4) + '</span></div>';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  }
+
+  // ─── Map Init ───
+  function initMap() {
+    map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: [-86.25, 14.65],
+      zoom: 7,
+      pitch: 45,
+      bearing: -10,
+      antialias: true,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    map.on('mousemove', e => {
+      document.getElementById('header-center').textContent =
+        e.lngLat.lat.toFixed(4) + ', ' + e.lngLat.lng.toFixed(4);
+    });
+
+    map.on('zoom', () => {
+      document.getElementById('header-zoom').textContent = 'Z ' + map.getZoom().toFixed(2);
+      updateScaleBar();
+    });
+
+    map.on('move', () => { updateScaleBar(); });
+
+    map.on('load', () => {
+      deckOverlay = new deck.MapboxOverlay({
+        interleaved: false,
+        layers: [],
+        getTooltip: null,
+        onHover: handleHover,
+        pickingRadius: 5,
+      });
+      map.addControl(deckOverlay);
+      updateScaleBar();
+      setTimeout(() => updateLayers(), 200);
+    });
+  }
+})();
+</script>
+</body>
+</html>
