@@ -612,10 +612,12 @@
 
   // ─── Baseline data (embedded from BASELINE_SCHOOLS / EXISTING_TOWERS) ───
   // Format: [lat, lon, name, dept, connected(0/1), has_device(0/1)]
-  const baselineSchoolObjects = BASELINE_SCHOOLS.map(s => ({
+  const _bsRaw = (typeof BASELINE_SCHOOLS !== 'undefined') ? BASELINE_SCHOOLS : [];
+  const _etRaw = (typeof EXISTING_TOWERS !== 'undefined') ? EXISTING_TOWERS : [];
+  const baselineSchoolObjects = _bsRaw.map(s => ({
     lat: s[0], lon: s[1], name: s[2], dept: s[3], connected: s[4], has_device: s[5]
   }));
-  const baselineTowerObjects = EXISTING_TOWERS.map(t => ({ lat: t[0], lon: t[1] }));
+  const baselineTowerObjects = _etRaw.map(t => ({ lat: t[0], lon: t[1] }));
   const TOTAL_BASELINE_SCHOOLS = baselineSchoolObjects.length;
   const BASELINE_CONNECTED = baselineSchoolObjects.filter(s => s.connected === 1).length;
   let map = null, deckOverlay = null;
