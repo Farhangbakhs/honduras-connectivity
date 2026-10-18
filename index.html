@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HND-SCHOOL-CONNECT — Honduras school connectivity plan</title>
+<meta name="description" content="Five-year MILP plan for connecting 12,578 unconnected Honduran public schools on a $125M budget. Annual milestones cost 3,046 schools, or 24.3 percentage points of year-5 coverage.">
+<meta name="color-scheme" content="dark">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HND-SCHOOL-CONNECT">
+<meta property="og:title" content="HND-SCHOOL-CONNECT — Honduras school connectivity plan">
+<meta property="og:description" content="Five-year MILP plan for 12,578 unconnected Honduran public schools on a $125M budget. Annual milestones cost 3,046 schools, or 24.3 percentage points of year-5 coverage.">
+<meta property="og:image" content="assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Dark map of Honduras showing connected and unconnected schools at year 5 with tower and WISP sites.">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="preload" href="data/app-data.json" as="fetch" crossorigin="anonymous">
+</head>
+<body class="view-map">
+
+<!-- load state: a thin progress line, nothing else -->
+<div id="boot">
+  <div id="boot-track"><div id="boot-fill"></div></div>
+  <div id="boot-msg">loading</div>
+</div>
+
+<div id="app">
+
+  <!-- ===================== top bar ===================== -->
+  <header id="top">
+    <div id="brand"><b>HND-SCHOOL-CONNECT</b><span>/ deterministic</span></div>
+
+    <nav class="seg" id="view-seg" aria-label="View">
+      <button type="button" data-view="map" aria-pressed="true">Map</button>
+      <button type="button" data-view="brief" aria-pressed="false">Brief</button>
+    </nav>
+
+    <div id="top-scenario">
+      <span class="lbl">Scenario</span>
+      <nav class="seg" id="scn-seg" aria-label="Scenario">
+        <button type="button" data-scn="u" aria-pressed="true">Unrestricted</button>
+        <button type="button" data-scn="m" aria-pressed="false">Milestone</button>
+        <button type="button" data-scn="c" aria-pressed="false">Compare</button>
+      </nav>
+    </div>
+
+    <div id="search-wrap" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="results">
+      <input id="search" type="text" placeholder="Search school by name or ID" autocomplete="off"
+             spellcheck="false" aria-autocomplete="list" aria-controls="results">
+      <ul id="results" role="listbox" aria-label="Search results" hidden></ul>
+    </div>
+
+    <button type="button" id="info-btn" aria-expanded="false" aria-controls="info" title="Method, sources and shortcuts">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.25"/><path d="M8 7v4.25M8 4.6v.9"/>
+      </svg>
+      <span class="sr">Method, sources and shortcuts</span>
+    </button>
+  </header>
+
+  <!-- ===================== left rail ===================== -->
+  <aside id="rail" aria-label="Layers and filters">
+    <section class="sec">
+      <span class="lbl">Layers</span>
+      <div id="layers"></div>
+    </section>
+
+    <section class="sec">
+      <span class="lbl">Legend</span>
+      <div id="legend"></div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <span class="lbl" id="dept-head">Departments</span>
+        <button type="button" id="dept-clear" hidden>clear</button>
+      </div>
+      <div id="dept-list"></div>
+    </section>
+  </aside>
+
+  <!-- ===================== map ===================== -->
+  <main id="main">
+    <div id="map"></div>
+    <div id="hover" hidden></div>
+    <p id="map-note" hidden></p>
+    <div id="scale"><span id="scale-label">—</span><div id="scale-bar"></div></div>
+    <div id="attrib">
+      <span>Data: Giga (UNICEF–ITU), OpenCellID</span>
+      <span id="attrib-base">© <a href="https://carto.com/attributions" rel="noopener">CARTO</a>, © <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a></span>
+      <a href="https://github.com/farhangbakhs/honduras-connectivity" rel="noopener">Repo</a>
+    </div>
+  </main>
+
+  <!-- ===================== inspector ===================== -->
+  <aside id="insp" aria-label="Readout">
+    <section class="sec" id="kpi-sec">
+      <span class="lbl" id="kpi-head">Readout</span>
+      <dl class="kpi" id="kpi"></dl>
+      <div id="cmp" hidden></div>
+    </section>
+
+    <section class="sec" id="year-sec">
+      <span class="lbl">By year</span>
+      <table class="ytab" id="ytab"></table>
+    </section>
+
+    <section class="sec" id="sel-sec">
+      <div class="sec-head">
+        <span class="lbl" id="sel-head">Selection</span>
+        <button type="button" id="sel-clear" hidden>clear</button>
+      </div>
+      <div id="sel-body"><p class="empty">No entity selected. Click a school or site on the map.</p></div>
+    </section>
+  </aside>
+
+  <!-- ===================== bottom sheet tabs (narrow only) ===================== -->
+  <nav id="sheet-tabs" aria-label="Panels">
+    <button type="button" data-sheet="insp" aria-pressed="true">Readout</button>
+    <button type="button" data-sheet="rail" aria-pressed="false">Layers</button>
+    <button type="button" data-sheet="none" aria-pressed="false">Map only</button>
+  </nav>
+
+  <!-- ===================== timeline ===================== -->
+  <footer id="tl">
+    <button type="button" id="play" aria-pressed="false" title="Play years (space)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" id="play-icon">
+        <path d="M4 2.5 13 8l-9 5.5z"/>
+      </svg>
+      <span class="sr">Play through years</span>
+    </button>
+    <div id="years" role="group" aria-label="Year"></div>
+    <div id="tl-chart">
+      <span class="lbl" id="tl-chart-label">New connections</span>
+      <svg id="spark" role="img" aria-label="New connections per year"></svg>
+    </div>
+  </footer>
+
+  <!-- ===================== brief ===================== -->
+  <div id="brief" hidden><div class="brief-col" id="brief-col"></div></div>
+</div>
+
+<!-- ===================== info panel ===================== -->
+<div id="info" hidden aria-label="Method, sources and shortcuts">
+  <button type="button" id="info-close" title="Close">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8"/>
+    </svg>
+    <span class="sr">Close</span>
+  </button>
+  <div id="info-body"></div>
+</div>
+
+<script src="vendor/maplibre-gl/maplibre-gl.js"></script>
+<script type="module" src="js/main.js"></script>
+<noscript>
+  <p style="padding:24px;color:#8A949E;font:400 13px/1.6 system-ui">
+    This is an interactive map and requires JavaScript. The underlying data is available as CSV in
+    <code>data/raw/</code>.
+  </p>
+</noscript>
+</body>
+</html>
