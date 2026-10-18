@@ -55,8 +55,12 @@ const actions = {
     for (const btn of document.querySelectorAll('#view-seg button')) {
       btn.setAttribute('aria-pressed', String(btn.dataset.view === view));
     }
-    if (view === 'brief') stopPlay();
-    else requestAnimationFrame(() => map.map.resize());
+    if (view === 'brief') {
+      stopPlay();
+      ui.typesetBrief();
+    } else {
+      requestAnimationFrame(() => map.map.resize());
+    }
     syncHash();
   },
 
@@ -300,6 +304,8 @@ function wireSheet() {
     map.apply();
     ui.render();
     refreshSelection();
+    // deep link straight into the Brief needs its maths typeset too
+    if (state.view === 'brief') ui.typesetBrief();
     if (state.dept !== null) map.flyToDept(state.dept);
     if (state.selection?.kind === 'school') map.flyToSchool(state.selection.ix);
 

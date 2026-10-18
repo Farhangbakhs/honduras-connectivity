@@ -36,6 +36,73 @@ export const C = (() => {
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
+/* --- site glyphs --------------------------------------------------------
+   Schools are circles. Sites are angular, so the two read apart by shape
+   alone rather than by colour and size, which is what made them blend
+   together at country zoom. Drawn to a canvas once and registered with the
+   style; no external image files.
+   ----------------------------------------------------------------------- */
+
+const DPR = 2;
+
+function makeIcon(box, draw) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = box * DPR;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+  ctx.translate(box / 2, box / 2);
+  ctx.lineJoin = 'miter';
+  draw(ctx);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return { width: img.width, height: img.height, data: img.data };
+}
+
+/** Existing tower with no WISP unit: hollow square, deliberately quiet. */
+function glyphExisting() {
+  return makeIcon(14, (ctx) => {
+    const s = 7;
+    ctx.fillStyle = 'rgba(11,14,17,0.85)';
+    ctx.fillRect(-s / 2, -s / 2, s, s);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = C.existing;
+    ctx.strokeRect(-s / 2, -s / 2, s, s);
+  });
+}
+
+/** Newly built tower: solid square, dark keyline so it holds over any ground. */
+function glyphTower() {
+  return makeIcon(16, (ctx) => {
+    const s = 8;
+    ctx.fillStyle = C.tower;
+    ctx.fillRect(-s / 2, -s / 2, s, s);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = C.bg;
+    ctx.strokeRect(-s / 2, -s / 2, s, s);
+  });
+}
+
+/** WISP-equipped site: diamond inside a broadcast ring. The ring is the thing
+ *  that makes coverage legible at a glance without drawing every footprint. */
+function glyphWisp() {
+  return makeIcon(24, (ctx) => {
+    ctx.beginPath();
+    ctx.arc(0, 0, 8.4, 0, Math.PI * 2);
+    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = C.wisp;
+    ctx.globalAlpha = 0.6;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.rotate(Math.PI / 4);
+    const s = 7.6;
+    ctx.fillStyle = C.wisp;
+    ctx.fillRect(-s / 2, -s / 2, s, s);
+    ctx.lineWidth = 1.3;
+    ctx.strokeStyle = C.bg;
+    ctx.strokeRect(-s / 2, -s / 2, s, s);
+  });
+}
+
 /* --- expression helpers ------------------------------------------------- */
 
 /** "this school is connected by year Y under scenario k" */
@@ -133,6 +200,11 @@ class MapController {
     // stays empty until someone ticks the box.
     map.addSource('towers', { type: 'geojson', data: EMPTY });
     this.towersLoaded = false;
+    // Every WISP footprint as a real 10 km polygon. Built once on first use and
+    // then filtered by expression like everything else, so scrubbing years
+    // never rebuilds it.
+    map.addSource('coverage', { type: 'geojson', data: EMPTY });
+    this.coverageLoaded = false;
     map.addSource('sites', { type: 'geojson', data: data.geo.sites, promoteId: 'i' });
     map.addSource('schools', { type: 'geojson', data: data.geo.schools, promoteId: 'i' });
     map.addSource('sel-ring', { type: 'geojson', data: EMPTY });
@@ -205,18 +277,39 @@ class MapController {
       },
     });
 
-    // 4 — 10 km coverage ring for the selection
+    // 3b — every active WISP footprint (toggle, default off)
+    map.addLayer({
+      id: 'coverage-fill',
+      type: 'fill',
+      source: 'coverage',
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': C.wisp, 'fill-opacity': 0.022 },
+    });
+    map.addLayer({
+      id: 'coverage-line',
+      type: 'line',
+      source: 'coverage',
+      layout: { visibility: 'none' },
+      paint: { 'line-color': C.wisp, 'line-width': 0.6, 'line-opacity': 0.5 },
+    });
+
+    // 4 — 10 km radius for the selection, drawn to be unmistakable
     map.addLayer({
       id: 'sel-ring-fill',
       type: 'fill',
       source: 'sel-ring',
-      paint: { 'fill-color': C.accent, 'fill-opacity': 0.022 },
+      paint: { 'fill-color': C.accent, 'fill-opacity': 0.035 },
     });
     map.addLayer({
       id: 'sel-ring-line',
       type: 'line',
       source: 'sel-ring',
-      paint: { 'line-color': C.accent, 'line-width': 1, 'line-opacity': 0.5, 'line-dasharray': [3, 3] },
+      paint: {
+        'line-color': C.accent,
+        'line-width': 1.4,
+        'line-opacity': 0.9,
+        'line-dasharray': [4, 3],
+      },
     });
 
     // 5 — links from the selection to its linked entities
@@ -251,51 +344,41 @@ class MapController {
       },
     });
 
-    // 7 — sites, split so each is independently toggleable
-    // Sites are fewer and more important than schools, so they sit above them
-    // and read a step larger — but only just, or they swamp a phone screen at
-    // country zoom.
-    const siteRadius = (base) => [
-      'interpolate', ['linear'], ['zoom'],
-      6, ['case', ['boolean', ['feature-state', 'hover'], false], base + 1.6, base * 0.78],
-      8.5, ['case', ['boolean', ['feature-state', 'hover'], false], base + 2.4, base],
-      14, ['case', ['boolean', ['feature-state', 'hover'], false], base + 6, base + 3.4],
-    ];
+    // 7 — sites, split so each is independently toggleable. Symbol layers
+    // rather than circles: shape is what separates a tower from a school.
+    map.addImage('site-existing', glyphExisting(), { pixelRatio: DPR });
+    map.addImage('site-tower', glyphTower(), { pixelRatio: DPR });
+    map.addImage('site-wisp', glyphWisp(), { pixelRatio: DPR });
 
+    const siteSymbol = (id, image, sizes) => map.addLayer({
+      id,
+      type: 'symbol',
+      source: 'sites',
+      layout: {
+        'icon-image': image,
+        // every site matters; never let label collision drop one
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 6, sizes[0], 9, sizes[1], 14, sizes[2]],
+      },
+      paint: { 'icon-opacity': 0.96 },
+    });
+
+    siteSymbol('sites-existing', 'site-existing', [0.42, 0.62, 1.05]);
+    siteSymbol('sites-tower', 'site-tower', [0.48, 0.72, 1.25]);
+    siteSymbol('sites-wisp', 'site-wisp', [0.46, 0.7, 1.3]);
+
+    // Hover feedback for sites. icon-size is a layout property and cannot read
+    // feature-state, so the highlight is a separate circle outline.
     map.addLayer({
-      id: 'sites-existing',
+      id: 'sites-hover',
       type: 'circle',
       source: 'sites',
       paint: {
-        'circle-radius': siteRadius(1.8),
-        'circle-color': C.existing,
-        'circle-opacity': 0.75,
-        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 7, 14, 13],
+        'circle-color': 'rgba(0,0,0,0)',
         'circle-stroke-color': C.accent,
-      },
-    });
-    map.addLayer({
-      id: 'sites-tower',
-      type: 'circle',
-      source: 'sites',
-      paint: {
-        'circle-radius': siteRadius(2.6),
-        'circle-color': C.tower,
-        'circle-opacity': 0.9,
-        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1.2, 0.5],
-        'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], C.accent, C.bg],
-      },
-    });
-    map.addLayer({
-      id: 'sites-wisp',
-      type: 'circle',
-      source: 'sites',
-      paint: {
-        'circle-radius': siteRadius(3),
-        'circle-color': C.wisp,
-        'circle-opacity': 0.95,
-        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1.4, 0.6],
-        'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], C.accent, C.bg],
+        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1.4, 0],
       },
     });
 
@@ -410,6 +493,11 @@ class MapController {
       map.setFilter('sites-existing', ['any', presentIn('u'), presentIn('m')]);
       map.setFilter('sites-tower', ['==', ['get', 'ex'], -99]);
       map.setFilter('sites-wisp', ['==', ['get', 'ex'], -99]);
+      map.setFilter('sites-hover', ['any', presentIn('u'), presentIn('m')]);
+      // coverage from either plan, since neither is "the" scenario here
+      const eitherWisp = ['any', wispBy('u', y), wispBy('m', y)];
+      map.setFilter('coverage-fill', eitherWisp);
+      map.setFilter('coverage-line', eitherWisp);
     } else {
       const hasWisp = wispBy(k, y);
       map.setFilter('sites-existing', [
@@ -419,6 +507,9 @@ class MapController {
         'all', presentIn(k), ['==', ['get', 'ex'], 0], towerBy(k, y), ['!', hasWisp],
       ]);
       map.setFilter('sites-wisp', ['all', presentIn(k), hasWisp]);
+      map.setFilter('sites-hover', presentIn(k));
+      map.setFilter('coverage-fill', hasWisp);
+      map.setFilter('coverage-line', hasWisp);
     }
 
     // --- choropleth values
@@ -437,10 +528,17 @@ class MapController {
       this.map.getSource('towers').setData(this.data.geo.towers());
       this.towersLoaded = true;
     }
+    if (v.coverage && !this.coverageLoaded) {
+      this.map.getSource('coverage').setData(this.data.geo.coverage());
+      this.coverageLoaded = true;
+    }
     this.#vis('towers', v.towers);
+    this.#vis('coverage-fill', v.coverage);
+    this.#vis('coverage-line', v.coverage);
     this.#vis('dept-fill', v.choropleth);
     this.#vis('sel-ring-fill', v.rings);
     this.#vis('sel-ring-line', v.rings);
+    this.#vis('sites-hover', v.sitesExisting || v.sitesTower || v.sitesWisp);
   }
 
   #vis(id, on) {
