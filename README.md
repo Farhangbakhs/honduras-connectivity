@@ -2,7 +2,7 @@
 
 A static analyst console for a mixed-integer linear programme that plans internet connectivity for **12,578 unconnected Honduran public schools** over five years on a **$125M** budget, following a tower → WISP → devices prerequisite chain. Two plans are compared: an unrestricted one that maximises year-5 coverage, and a milestone-constrained one that must show annual progress. The site loads the full model output — every school, every site, both scenarios — with no upload step, no server and no API key.
 
-**Live site:** `https://farhangbakhs.github.io/honduras-connectivity/` *(enable Pages first — see Deploy below)*
+**Live site:** <https://farhangbakhs.github.io/honduras-connectivity/>
 
 ![The map view at year 5 under the unrestricted plan](assets/og.png)
 
@@ -118,15 +118,16 @@ Rendering is MapLibre GeoJSON sources with `circle` layers and no DOM markers. C
 
 ---
 
-## Deploy to GitHub Pages
+## Deploy
 
-1. Push to `main`.
-2. **Settings → Pages**.
-3. Under **Source**, choose **Deploy from a branch**.
-4. Branch `main`, folder `/ (root)`. **Save**.
-5. Wait for the Pages action to finish, then open `https://farhangbakhs.github.io/honduras-connectivity/`.
+Pages is already configured to serve `main` at `/ (root)` with HTTPS enforced, so
+pushing to `main` redeploys. To change it: **Settings → Pages → Source: Deploy
+from a branch → `main` / `(root)`**.
 
-Every path in the site is relative, so it works from a repository subpath without configuration.
+Every path in the site is relative, so it works from a repository subpath
+without configuration. The two exceptions are `og:url` and `og:image` in
+`index.html`, which are absolute because several link-preview scrapers will not
+resolve a relative `og:image`; update them if the site moves.
 
 ---
 
