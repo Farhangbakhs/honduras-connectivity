@@ -1,0 +1,214 @@
+{
+  "title": "HND-SCHOOL-CONNECT",
+  "subtitle": "Five-year school connectivity plan, Honduras — deterministic MILP output",
+  "scope": "Covers the two deterministic models only. The stochastic extension is out of scope and is not represented anywhere on this site.",
+
+  "constants": {
+    "cost_tower": { "v": 100000, "unit": "USD", "label": "New tower", "source": "Report §3, cost parameters" },
+    "cost_wisp": { "v": 5500, "unit": "USD", "label": "WISP unit", "source": "Report §3, cost parameters" },
+    "cost_device": { "v": 7300, "unit": "USD", "label": "Device package", "source": "Report §3, cost parameters" },
+    "cost_opex": { "v": 3820, "unit": "USD/school/yr", "label": "O&M per connected school", "source": "Report §3, cost parameters" },
+    "per_school_existing": { "v": 12800, "unit": "USD", "label": "Per school, existing tower", "source": "Report §3" },
+    "per_school_new": { "v": 112800, "unit": "USD", "label": "Per school, new tower required", "source": "Report §3" },
+    "budget_total": { "v": 125000000, "unit": "USD", "label": "Budget", "source": "Report §3" },
+    "budget_annual": { "v": 25000000, "unit": "USD/yr", "label": "Annual budget", "source": "Report §3" },
+    "wisp_radius_km": { "v": 10, "unit": "km", "label": "WISP radius", "source": "Report §2, connection definition" },
+    "horizon": { "v": 5, "unit": "years", "label": "Planning horizon", "source": "Report §3" },
+    "milestones": { "v": [0.1, 0.15, 0.2, 0.25, 0.3], "label": "Milestone targets λ", "source": "Report §4" },
+    "penalty": { "v": 10, "label": "Shortfall penalty π", "source": "Report §4" }
+  },
+
+  "setup": {
+    "schools_total": { "v": 15492, "label": "Schools in dataset", "source": "Report Table 1" },
+    "already_connected": { "v": 1130, "label": "Already connected", "source": "Report Table 1" },
+    "excluded": { "v": 1784, "label": "Excluded, no candidate tower within 10 km", "source": "Report Table 1" },
+    "optimisation_set": { "v": 12578, "label": "Optimisation set", "source": "Report Table 1; reproduced from the CSVs" },
+    "had_devices": { "v": 1746, "label": "Already hold working devices", "source": "Report Table 1; reproduced from the CSVs" },
+    "need_devices": { "v": 10832, "label": "Need a device package", "source": "Report Table 1; reproduced from the CSVs" },
+    "candidate_sites": { "v": 7297, "label": "Existing tower sites", "source": "Report §3; reproduced from legacy/baseline_data.js" },
+    "solution_sites": { "v": 6384, "label": "Sites appearing in model output", "source": "Computed: distinct site_id across both scenario files" },
+    "departments": { "v": 18, "label": "Departments", "source": "Reproduced from the CSVs" },
+    "municipios": { "v": 275, "label": "Municipios", "source": "Reproduced from the CSVs" }
+  },
+
+  "scenarios": {
+    "u": {
+      "key": "u",
+      "label": "Unrestricted",
+      "long": "Unrestricted efficiency",
+      "description": "Maximises year-5 connected schools with no intermediate targets. Upper bound on what the budget can buy.",
+      "connected": { "v": 12409, "source": "Report Table 5; reproduced" },
+      "connected_pct": { "v": 98.7, "source": "Report Table 5; computed 98.66%" },
+      "unreached": { "v": 169, "source": "Report Table 5; reproduced" },
+      "devices": { "v": 10705, "source": "Report Table 5; reproduced" },
+      "towers": { "v": 330, "source": "Report Table 5; reproduced" },
+      "wisp": { "v": 1336, "source": "Report Table 5; reproduced" },
+      "towers_by_year": { "v": [79, 53, 107, 56, 35], "source": "Report Table 6; reproduced" },
+      "wisp_by_year": { "v": [0, 0, 12, 68, 1256], "source": "Report Table 6; reproduced" },
+      "connections_by_year": { "v": [0, 0, 1, 71, 12337], "source": "Computed from the CSVs" },
+      "year5_share": { "v": 99.4, "unit": "%", "source": "Report §5; computed 99.42%" },
+      "capex": { "v": 118494500, "source": "Computed: 10,705×$7,300 + 330×$100,000 + 1,336×$5,500" },
+      "opex_horizon": { "v": 278860, "source": "Computed: O&M charged from the year after connection to year 5" },
+      "opex_runrate": { "v": 47402380, "source": "Computed: 12,409 × $3,820" },
+      "stranded_devices": { "v": 40, "source": "Computed: got_dev=1 and connected=0" },
+      "stranded_devices_cost": { "v": 292000, "source": "Computed: 40 × $7,300" },
+      "full_coverage_departments": {
+        "v": ["Lempira", "Santa Bárbara", "Cortés", "Copán", "Intibucá", "Atlántida"],
+        "source": "Report §5; reproduced"
+      }
+    },
+    "m": {
+      "key": "m",
+      "label": "Milestone-constrained",
+      "long": "Milestone-constrained efficiency",
+      "description": "Same objective, but shortfalls against annual targets of 10–30% of unconnected schools are penalised. Represents the political requirement for visible year-on-year progress.",
+      "connected": { "v": 9363, "source": "Report Table 5; reproduced" },
+      "connected_pct": { "v": 74.4, "source": "Report Table 5; computed 74.44%" },
+      "unreached": { "v": 3215, "source": "Report Table 5; reproduced" },
+      "devices": { "v": 9098, "source": "Report Table 5; reproduced" },
+      "towers": { "v": 164, "source": "Report Table 5. Row count; 156 distinct sites — see mismatch M1" },
+      "wisp": { "v": 313, "source": "Report Table 5. Row count; 302 distinct sites — see mismatch M1" },
+      "towers_uniq": { "v": 156, "source": "Computed: distinct site_id" },
+      "wisp_uniq": { "v": 302, "source": "Computed: distinct site_id" },
+      "towers_by_year": { "v": [67, 42, 22, 28, 5], "source": "Computed from the CSVs (row counts)" },
+      "wisp_by_year": { "v": [17, 42, 50, 55, 149], "source": "Computed from the CSVs (row counts)" },
+      "connections_by_year": { "v": [198, 720, 1125, 900, 6420], "source": "Report Table 6; reproduced" },
+      "early_share": { "v": 31, "unit": "%", "source": "Report §5: years 1–4 account for 31% of connections" },
+      "capex": { "v": 84536900, "source": "Computed: 9,098×$7,300 + 164×$100,000 + 313×$5,500" },
+      "opex_horizon": { "v": 23309640, "source": "Computed: O&M charged from the year after connection to year 5" },
+      "opex_runrate": { "v": 35766660, "source": "Computed: 9,363 × $3,820" },
+      "stranded_devices": { "v": 1183, "source": "Computed: got_dev=1 and connected=0" },
+      "stranded_devices_cost": { "v": 8635900, "source": "Computed: 1,183 × $7,300" },
+      "below_average_departments": {
+        "v": [
+          { "name": "Islas de la Bahía", "pct": 24.4 },
+          { "name": "Olancho", "pct": 29.8 },
+          { "name": "Yoro", "pct": 31.6 },
+          { "name": "Francisco Morazán", "pct": 36.4 }
+        ],
+        "source": "Report §6; reproduced"
+      }
+    }
+  },
+
+  "delta": {
+    "schools": { "v": 3046, "source": "Report §7; reproduced (12,409 − 9,363)" },
+    "pp": { "v": 24.3, "source": "Report §7; computed 24.22 pp" },
+    "schools_per_pp": { "v": 125, "source": "Computed: 3,046 / 24.22. The old README said ~250 — see mismatch M2" },
+    "opex_runrate": { "v": 11635720, "source": "Computed: $47,402,380 − $35,766,660" },
+    "capex": { "v": 33957600, "source": "Computed: $118,494,500 − $84,536,900" }
+  },
+
+  "brief": {
+    "bluf": [
+      "On a $125M five-year budget, an unrestricted plan connects 12,409 of 12,578 unconnected Honduran public schools — 98.7%. Imposing annual milestones of 10–30% of remaining unconnected schools cuts that to 9,363, or 74.4%.",
+      "The 3,046-school gap is not a budget shortfall. It is recurring cost: every school connected early draws $3,820 a year in O&M for the rest of the horizon, and that spending displaces the capital that would have connected others in year 5.",
+      "Each percentage point of early visible progress costs about 125 schools connected by 2030.",
+      "Exposure is uneven. Four departments fall below 37% under milestones, against a 74.4% national figure, because they depend on new towers at $100,000 each and receive budget in proportion to their unconnected school count rather than to the cost of reaching them."
+    ],
+    "judgements": [
+      {
+        "text": "Milestones cost 3,046 schools, or 24.3 percentage points of year-5 coverage, on an identical budget. The constraint binds on timing, not on money.",
+        "tag": "Report Table 5"
+      },
+      {
+        "text": "The mechanism is O&M crowding out CAPEX. The unrestricted plan concentrates 99.4% of connections in year 5 and spends $278,860 on O&M across the horizon; the milestone plan spends $23,309,640, which is 28% of its own capital programme.",
+        "tag": "Computed from model output"
+      },
+      {
+        "text": "Milestones also strand equipment. 1,183 purchased device packages — $8,635,900 — sit at schools that never receive coverage within the horizon, against 40 packages ($292,000) in the unrestricted plan.",
+        "tag": "Computed from model output"
+      },
+      {
+        "text": "New-tower dependence drives departmental variance. Six departments reach 100% unrestricted; under milestones, Islas de la Bahía falls to 24.4%, Olancho to 29.8%, Yoro to 31.6% and Francisco Morazán to 36.4%.",
+        "tag": "Report §6"
+      },
+      {
+        "text": "The plan creates a permanent liability that outlasts it. Sustaining the unrestricted end-state costs $47.4M a year from 2030; the milestone end-state costs $35.8M. Neither figure is inside the $125M capital budget.",
+        "tag": "Computed from model output"
+      },
+      {
+        "text": "Coverage is not the only binding constraint on the unreached. Of the 169 schools the unrestricted plan never connects, 58 lie within 10 km of a WISP-equipped site and 34 of those already hold a device package. The report's claim that all 169 lie outside coverage does not hold.",
+        "tag": "Computed from model output — see data notes"
+      }
+    ],
+    "milestone_cost": "Milestones bind on operating cost, not capital. A school connected in year 1 draws $3,820 in O&M in each of years 2 to 5 — $15,280 that is then unavailable for capital. The milestone plan front-loads 2,943 connections into years 1 to 4 and pays $23,309,640 in O&M across the horizon; the unrestricted plan defers almost everything to year 5 and pays $278,860. The difference, roughly $23M, is close to the $33.96M of capital the milestone plan never deploys, and it buys 3,046 fewer schools. Dividing the loss by the 24.22-point coverage gap gives about 125 schools per percentage point of early visible progress.",
+    "department_exposure": "Departments are allocated budget in proportion to their unconnected school count, not to the cost of connecting them. Where existing towers are dense, a school costs about $12,800; where a new tower is needed first, about $112,800 — a factor of nine. Under the unrestricted plan this is absorbed, because the solver defers spending and buys towers wherever they are cheapest per school reached. Under milestones each department must show annual progress from its own proportional share, so the departments that need towers spend their allocation on a handful of expensive sites and then stall. Islas de la Bahía (24.4%), Olancho (29.8%), Yoro (31.6%) and Francisco Morazán (36.4%) are the clearest cases; Olancho alone accounts for 96 of the 169 schools the unrestricted plan cannot reach at all.",
+    "recommendations": [
+      {
+        "head": "Calibrate milestones against the O&M–CAPEX trade-off",
+        "text": "Treat the 125-schools-per-percentage-point figure as the price of visible progress and set λ from it explicitly. A milestone schedule that starts lower and steepens in years 4 and 5 buys most of the political signal at a fraction of the coverage cost."
+      },
+      {
+        "head": "Allocate budget by cost-to-connect, or set a regional coverage floor",
+        "text": "Proportional-to-need allocation systematically underfunds new-tower departments. Either weight allocations by the cost of reaching each department's unconnected schools, or impose a minimum coverage percentage per department and let the solver find the cheapest way to meet it."
+      },
+      {
+        "head": "Budget the post-2030 run-rate before committing",
+        "text": "Full coverage implies $47.4M a year in O&M from 2030, which is 38% of the entire five-year capital budget, every year, indefinitely. A connectivity programme without a standing O&M line will decay back toward its starting point."
+      },
+      {
+        "head": "Treat the excluded schools as a separate problem",
+        "text": "The 1,784 schools with no candidate tower within 10 km, and most of the 169 the model cannot reach, are not short of WISP budget — they are outside WISP geometry. They need fibre or satellite, and costing them against this programme's per-school figures will understate the requirement."
+      }
+    ],
+    "limitations": [
+      "Deterministic only. Demand, costs and build times are treated as known. The stochastic extension is out of scope here.",
+      "A school counts as connected when it holds a device package and lies within 10 km of a WISP-equipped tower. Line of sight, terrain, spectrum, backhaul capacity and subscriber capacity per site are not modelled.",
+      "Costs are point estimates with no inflation, no procurement variance and no discounting.",
+      "The milestone plan's capital and O&M sum to $107.8M against a $125M budget, leaving about $17M unspent. This is a consequence of allocating budget per department with carry-over: some departments cannot spend their share. It is not slack available nationally.",
+      "The 1,784 excluded schools and the 1,130 already connected cannot be reproduced from the files in this repository, so those figures are carried from the report rather than recomputed.",
+      "The link drawn between a selected school and a site is derived — the nearest WISP-equipped site active by the selected year — not the solver's own assignment, which was never exported. It agrees with the model's connected flag for 12,408 of 12,409 unrestricted connections.",
+      "School coordinates are rounded to five decimals (about 1 m) in the site payload.",
+      "Device deployment at schools that already had working devices is not re-costed."
+    ],
+    "method": {
+      "connection": "A school is connected in year t when it holds a device package and lies within 10 km of a tower carrying a WISP unit by year t.",
+      "chain": "Investment follows a strict prerequisite chain: a tower must exist before a WISP unit can be installed on it, and a WISP unit must cover a school before that school's device package produces connectivity. Existing towers skip the first step.",
+      "allocation": "The $125M budget is split as $25M per year and allocated across the 18 departments in proportion to their unconnected school counts, with unspent funds carried over.",
+      "notation": [
+        "maximise  Σ_s c_s,5                         year-5 connected schools",
+        "  less    π Σ_t max(0, λ_t|S| − Σ_s c_s,t)  milestone shortfall, π = 10",
+        "s.t.      c_s,t ≤ d_s,t                     a school needs a device",
+        "          c_s,t ≤ Σ_{j∈N(s)} w_j,t          and a WISP site within 10 km",
+        "          w_j,t ≤ h_j + Σ_{τ≤t} y_j,τ       a WISP unit needs a tower",
+        "          Σ_{t≤T} (100k·y + 5.5k·w + 7.3k·d + 3.82k·c) ≤ B_d,T"
+      ],
+      "notation_note": "y = new tower, w = WISP unit, d = device package, c = connected, h = pre-existing tower, N(s) = sites within 10 km of school s, λ = 0.10/0.15/0.20/0.25/0.30. The last line is the budget constraint: cumulative spend through year T cannot exceed department d's allocation, which carries over unspent. Shown as the binding structure, not the full constraint set."
+    }
+  },
+
+  "mismatches": [
+    {
+      "id": "M1",
+      "head": "MilestonesSites.csv repeats site_ids, so the report's milestone infrastructure totals are row counts",
+      "text": "The file holds 6,261 rows for 5,307 distinct site_id values. 921 ids repeat, and 68 of those carry contradictory rows — the same site appears once with got_wisp=0 and once with got_wisp=1. Counting rows gives the report's 164 new towers and 313 WISP units; counting distinct sites gives 156 and 302, and CAPEX falls from $84,536,900 to $83,676,400. NoMilestoneSites.csv has no duplicates, so the unrestricted figures are unaffected.",
+      "resolution": "Map geometry deduplicates by site_id with union semantics, so no site is drawn twice. Headline KPIs keep the report's row-count figures so the site and the report agree; the distinct-site figures are shown here."
+    },
+    {
+      "id": "M2",
+      "head": "The old README's 250-schools-per-percentage-point figure was wrong",
+      "text": "3,046 schools divided by a 24.22-point gap is 125.8, not 250. The figure appeared to have been derived against a 12.2-point gap.",
+      "resolution": "Corrected to about 125 throughout the site and in the README."
+    },
+    {
+      "id": "M3",
+      "head": "Not all 169 unreached schools lie outside coverage",
+      "text": "The report states that the 169 schools the unrestricted plan never connects lie outside any candidate tower's 10 km WISP radius. Measured against the model's own output, 111 have no site within 10 km, 24 have a WISP-equipped site in range but no device package, and 34 have both a WISP-equipped site in range and a device package — at a median 5.64 km, so these are not boundary artefacts. Those 34 satisfy both halves of the stated connection rule yet are flagged unconnected, which suggests a per-site capacity limit or a precomputed school-site adjacency narrower than a plain 10 km radius.",
+      "resolution": "The claim is not repeated. The school-to-site link is labelled as derived, never as the solver's assignment."
+    },
+    {
+      "id": "M4",
+      "head": "The 1,784 excluded schools cannot be recomputed from this repository",
+      "text": "The only candidate set published here is the 7,297 existing towers, and those leave 54% of the optimisation set beyond 10 km — so the model must also have had candidate new-tower locations, which were never exported. The baseline school list cannot substitute: it contains 1,935 duplicate rows, its 1,130 connected schools collapse to 920 distinct records, and joining it to the output CSVs leaves 148 rows unmatched rather than 1,784.",
+      "resolution": "The 15,492 / 1,130 / 1,784 / 12,578 setup figures are carried from the report with source notes. No baseline school layer is drawn, because it could not be drawn honestly. The 7,297 existing towers ship as a clearly labelled context layer."
+    }
+  ],
+
+  "sources": [
+    { "label": "School locations and connectivity status", "text": "Giga (UNICEF–ITU)" },
+    { "label": "Tower locations", "text": "OpenCellID" },
+    { "label": "Department boundaries", "text": "geoBoundaries gbOpen HND ADM1 (OpenStreetMap / Wambacher), ODbL 1.0" },
+    { "label": "Basemap", "text": "CARTO Dark Matter, © OpenStreetMap contributors" }
+  ]
+}

@@ -1,0 +1,18 @@
+# Normalise text to LF in the repository; let checkouts use the platform default.
+* text=auto
+
+# Explicitly text, so nothing depends on content sniffing.
+*.html  text
+*.css   text
+*.js    text
+*.json  text
+*.md    text
+*.py    text
+*.csv   text
+*.svg   text
+
+# Explicitly binary. Line-ending conversion would silently corrupt these.
+*.woff2 binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
