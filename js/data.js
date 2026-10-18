@@ -231,6 +231,31 @@ function sitesGeoJSON(d) {
   return { type: 'FeatureCollection', features };
 }
 
+/**
+ * A 10 km footprint polygon for every site that is ever WISP-equipped in
+ * either scenario. Carries the same wy properties as the point layer, so the
+ * map filters it by expression instead of rebuilding it per year.
+ *
+ * 48 segments rather than 64: at these radii the difference is sub-pixel until
+ * you are zoomed well past the point where footprints are the useful view.
+ */
+function coverageGeoJSON(d) {
+  const features = [];
+  for (let i = 0; i < d.sites.n; i++) {
+    const uwy = d.sites.u.wy[i];
+    const mwy = d.sites.m.wy[i];
+    if (uwy <= 0 && mwy <= 0) continue;
+    const lon = d.siteLon(i);
+    const lat = d.siteLat(i);
+    features.push({
+      type: 'Feature',
+      properties: { i, uwy, mwy },
+      geometry: { type: 'Polygon', coordinates: [circle(lon, lat, WISP_RADIUS_KM, 48)] },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 function towersGeoJSON(d) {
   const features = new Array(d.towers.n);
   for (let i = 0; i < d.towers.n; i++) {
@@ -369,12 +394,14 @@ export async function load(onProgress = () => {}) {
 
   onProgress(0.95, 'building layers');
   let towersGeo = null;
+  let coverageGeo = null;
   d.geo = {
     schools: schoolsGeoJSON(d),
     sites: sitesGeoJSON(d),
-    // Built on first use: the inventory layer starts off, so 7,297 features
-    // would otherwise be constructed and tiled for nothing on every load.
+    // Both built on first use. These layers start off, so constructing and
+    // tiling ~8,700 features on every load would cost first paint for nothing.
     towers: () => (towersGeo || (towersGeo = towersGeoJSON(d))),
+    coverage: () => (coverageGeo || (coverageGeo = coverageGeoJSON(d))),
   };
 
   d.boundaries = await boundaries;

@@ -100,6 +100,44 @@
   },
 
   "brief": {
+    "background": [
+      {
+        "head": "The problem",
+        "text": "Honduras has 15,492 public schools in this dataset. 1,130 of them already have a working internet connection. The other 14,362 do not, and connecting them is not a procurement exercise — for most of the country the physical infrastructure that would carry the connection does not exist yet. The question this model answers is narrow and practical: given a fixed amount of money and five years, which schools should the country connect, in which order, and what should it build to do it?"
+      },
+      {
+        "head": "How a school gets connected",
+        "text": "The plan uses fixed wireless rather than fibre. A school counts as connected only when two things are true at the same time. First, there has to be a radio mast within 10 km of it carrying a WISP unit — the transmitter that actually broadcasts the internet signal. Second, the school itself needs a device package: the computers and receiving equipment that let it use the signal. Neither half is any use alone. A school surrounded by coverage but without equipment is not connected, and nor is a fully equipped school with no transmitter in range."
+      },
+      {
+        "head": "Why some schools cost nine times more than others",
+        "text": "A WISP unit has to sit on a mast, and Honduras already has 7,297 cell towers. Where one of those happens to stand within 10 km of a school, the country only has to fit it with a WISP unit at $5,500 and buy the school its devices at $7,300 — roughly $12,800 to connect that school. Where no tower is in range, one has to be built first, at $100,000. The same school then costs about $112,800. That nine-fold difference is what drives almost everything else in this analysis: it is why coverage grows unevenly, and why some departments stall."
+      },
+      {
+        "head": "The money, and the catch",
+        "text": "The budget is $125M over five years, released as $25M a year and split between the 18 departments in proportion to how many unconnected schools each one has, with anything unspent carried into the next year. The catch is that connecting a school is not a one-off purchase. Every connected school costs $3,820 a year to keep running — electricity, bandwidth, maintenance. Connect a school in year 1 and it draws that charge in each of years 2 to 5, which is $15,280 that can no longer be spent on building anything. Connecting schools early is therefore more expensive than connecting the same schools late, out of the same pot."
+      },
+      {
+        "head": "What the model is",
+        "text": "A mixed-integer linear programme, or MILP. The decisions are yes-or-no — build this tower in year 3 or not, fit this mast with a WISP unit or not, buy this school its devices or not — which is the \"integer\" part, and the costs and the budget add up in straight lines, which is the \"linear\" part. A solver then searches the space of every legal five-year plan and returns the one that connects the most schools by year 5. The result is not a good guess or a simulation: within the stated assumptions it is provably the best plan available, which is what makes it a useful yardstick to measure real policy against."
+      },
+      {
+        "head": "Why there are two plans",
+        "text": "Left to itself the solver discovers that waiting is efficient. It spends almost nothing for four years, avoids four years of running costs, and then connects nearly everyone at once in year 5. That is the Unrestricted plan, and it is the upper bound on what $125M can buy. No government can show nothing for four years, so the second plan adds annual targets: by each year t, a set share of the originally unconnected schools must be online — 10%, 15%, 20%, 25% and 30% — and the solver is penalised for falling short. That is the Milestone-constrained plan. The difference between the two is the price of visible progress, and it is what the rest of this brief measures."
+      }
+    ],
+
+    "glossary": [
+      { "term": "WISP unit", "def": "Wireless internet service provider equipment fitted to a mast. It broadcasts the signal, and covers schools within 10 km. $5,500." },
+      { "term": "Tower / site", "def": "A mast that a WISP unit can sit on. Either already standing (7,297 of them) or newly built at $100,000." },
+      { "term": "Device package", "def": "The computers and receiving equipment a school needs to use the signal. $7,300 per school, one-off." },
+      { "term": "CAPEX", "def": "Capital expenditure — the one-off cost of building towers, fitting WISP units and buying devices." },
+      { "term": "O&M", "def": "Operations and maintenance — the recurring $3,820 a year that every connected school costs to keep running." },
+      { "term": "Milestone", "def": "An annual coverage target the plan is penalised for missing. Set at 10%, 15%, 20%, 25% and 30% of the originally unconnected schools." },
+      { "term": "Department", "def": "Honduras's 18 first-level administrative regions. Budget is allocated to each one separately, which is why coverage varies so much between them." },
+      { "term": "Connected", "def": "Holds a device package AND sits within 10 km of a WISP-equipped mast. Both conditions, in the same year." }
+    ],
+
     "bluf": [
       "On a $125M five-year budget, an unrestricted plan connects 12,409 of 12,578 unconnected Honduran public schools — 98.7%. Imposing annual milestones of 10–30% of remaining unconnected schools cuts that to 9,363, or 74.4%.",
       "The 3,046-school gap is not a budget shortfall. It is recurring cost: every school connected early draws $3,820 a year in O&M for the rest of the horizon, and that spending displaces the capital that would have connected others in year 5.",
@@ -166,15 +204,50 @@
       "connection": "A school is connected in year t when it holds a device package and lies within 10 km of a tower carrying a WISP unit by year t.",
       "chain": "Investment follows a strict prerequisite chain: a tower must exist before a WISP unit can be installed on it, and a WISP unit must cover a school before that school's device package produces connectivity. Existing towers skip the first step.",
       "allocation": "The $125M budget is split as $25M per year and allocated across the 18 departments in proportion to their unconnected school counts, with unspent funds carried over.",
-      "notation": [
-        "maximise  Σ_s c_s,5                         year-5 connected schools",
-        "  less    π Σ_t max(0, λ_t|S| − Σ_s c_s,t)  milestone shortfall, π = 10",
-        "s.t.      c_s,t ≤ d_s,t                     a school needs a device",
-        "          c_s,t ≤ Σ_{j∈N(s)} w_j,t          and a WISP site within 10 km",
-        "          w_j,t ≤ h_j + Σ_{τ≤t} y_j,τ       a WISP unit needs a tower",
-        "          Σ_{t≤T} (100k·y + 5.5k·w + 7.3k·d + 3.82k·c) ≤ B_d,T"
+      "symbols": [
+        { "tex": "c_{s,t}", "means": "1 if school s is connected in year t, 0 otherwise" },
+        { "tex": "d_{s,t}", "means": "1 if school s holds a device package by year t" },
+        { "tex": "w_{j,t}", "means": "1 if site j carries a WISP unit in year t" },
+        { "tex": "y_{j,t}", "means": "1 if a new tower is built at site j in year t" },
+        { "tex": "h_j", "means": "1 if site j already has a tower standing" },
+        { "tex": "N(s)", "means": "the sites within 10 km of school s" },
+        { "tex": "\\lambda_t", "means": "the year-t milestone: 0.10, 0.15, 0.20, 0.25, 0.30" },
+        { "tex": "\\pi", "means": "the penalty per school of milestone shortfall, set to 10" },
+        { "tex": "B_{e,T}", "means": "department e's cumulative budget through year T" }
       ],
-      "notation_note": "y = new tower, w = WISP unit, d = device package, c = connected, h = pre-existing tower, N(s) = sites within 10 km of school s, λ = 0.10/0.15/0.20/0.25/0.30. The last line is the budget constraint: cumulative spend through year T cannot exceed department d's allocation, which carries over unspent. Shown as the binding structure, not the full constraint set."
+      "equations": [
+        {
+          "label": "Objective",
+          "tex": "\\max \\;\\; \\sum_{s \\in S} c_{s,5} \\;\\;-\\;\\; \\pi \\sum_{t=1}^{5} \\max\\!\\left(0,\\; \\lambda_t |S| - \\sum_{s \\in S} c_{s,t}\\right)",
+          "says": "Connect as many schools as possible by year 5. The second term is the milestone penalty: in any year where fewer schools are online than the target demanded, the shortfall is charged at π = 10 per school. Drop that second term and you have the Unrestricted plan; keep it and you have the Milestone-constrained one. Everything else about the two models is identical."
+        },
+        {
+          "label": "A school needs its own equipment",
+          "tex": "c_{s,t} \\;\\le\\; d_{s,t}",
+          "says": "A school cannot be counted as connected in a year unless it holds a device package that year. Coverage alone is not connectivity."
+        },
+        {
+          "label": "A school needs a transmitter in range",
+          "tex": "c_{s,t} \\;\\le\\; \\sum_{j \\in N(s)} w_{j,t}",
+          "says": "A school also needs at least one WISP-equipped site within 10 km. If every mast in range is bare, the right-hand side is zero and the school stays unconnected however much equipment it has."
+        },
+        {
+          "label": "A transmitter needs something to stand on",
+          "tex": "w_{j,t} \\;\\le\\; h_j + \\sum_{\\tau \\le t} y_{j,\\tau}",
+          "says": "A WISP unit can only exist at a site that either already had a tower, or has had one built there in this year or an earlier one. This is the prerequisite chain: tower, then WISP unit, then a connected school."
+        },
+        {
+          "label": "Spending is capped, department by department",
+          "tex": "\\sum_{t \\le T} \\left( 100{,}000\\, y_{j,t} + 5{,}500\\, w_{j,t} + 7{,}300\\, d_{s,t} + 3{,}820\\, c_{s,t} \\right) \\;\\le\\; B_{e,T}",
+          "says": "Everything built and everything run, summed over department e's sites and schools from year 1 to year T, has to fit inside that department's cumulative allocation. The last term is the one that does the damage: $3,820 is charged for every year a school stays connected, so an early connection keeps drawing down the budget that later construction would have used."
+        },
+        {
+          "label": "Every decision is yes or no",
+          "tex": "c_{s,t},\\; d_{s,t},\\; w_{j,t},\\; y_{j,t} \\;\\in\\; \\{0, 1\\}",
+          "says": "You cannot build two thirds of a tower. This integrality is what makes the problem a mixed-integer programme rather than ordinary linear algebra, and it is why solving it is hard."
+        }
+      ],
+      "notation_note": "Shown as the binding structure rather than the full constraint set. Omitted for brevity: that a connected school stays connected in later years, and that equipment once bought is not re-bought."
     }
   },
 

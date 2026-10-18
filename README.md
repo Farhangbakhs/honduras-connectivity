@@ -28,7 +28,7 @@ Scope: this site covers the two deterministic models only. The stochastic extens
 
 ## Using it
 
-The site opens on the **Map**. The **Brief** is a four-minute written product covering the same ground.
+The site opens on the **Map**. The **Brief** is a written product covering the same ground, written for a reader who has never seen this problem or an optimisation model before: it opens with the bottom line, then explains the connectivity problem, the tower/WISP/device chain, the budget and what a MILP actually decides, before getting to the findings. The formulation is set in LaTeX, and every constraint is given twice — once as the solver sees it, once in plain English.
 
 | | |
 |---|---|
@@ -39,7 +39,7 @@ The site opens on the **Map**. The **Brief** is a four-minute written product co
 | `Space` | play or pause the year scrubber |
 | `Esc` | clear selection |
 
-Clicking a school draws its 10 km radius, every site inside it, and a line to the site that most plausibly serves it. Clicking a site does the reverse. Compare colours each school by how the two plans differ at the selected year, which puts the 3,046-school gap directly on the map. The state of the view lives in the URL, so a particular scenario, year, department or selected school can be linked to.
+Schools are drawn as circles and sites as angular glyphs — a hollow square for an existing tower, a solid square for a newly built one, and a diamond inside a broadcast ring for a WISP-equipped site — so the two separate by shape as well as colour. The **WISP coverage** layer draws every active 10 km footprint; it is off by default because it stacks heavily in dense areas. Clicking a school draws its 10 km radius, every site inside it, and a line to the site that most plausibly serves it. Clicking a site does the reverse. Compare colours each school by how the two plans differ at the selected year, which puts the 3,046-school gap directly on the map. The state of the view lives in the URL, so a particular scenario, year, department or selected school can be linked to.
 
 ---
 
@@ -83,6 +83,11 @@ python scripts/build_boundaries.py
 | `data/app-data.json` | 992,232 (28.7%) |
 | … as served, gzipped | ~248,900 |
 | `data/hnd-adm1.json` | 110,655 |
+| `vendor/katex/` (JS + CSS + 20 woff2) | 558,541 |
+
+KaTeX is not on the critical path: it is fetched only when the Brief is first
+opened, and the browser pulls just the two or three maths fonts the formulae
+actually use.
 
 The payload is columnar rather than an array of objects, coordinates are integers offset from the bounding box at five decimal places, departments and municipios are integer codes against a lookup, and the 6,400 distinct school names are deduplicated.
 
@@ -109,12 +114,13 @@ data/findings.json      every hard-coded figure, each with a source note
 data/hnd-adm1.json      18 departments, simplified
 data/raw/*.csv          the four original CSVs, unmodified
 vendor/maplibre-gl/     MapLibre GL JS 4.7.1, pinned locally
+vendor/katex/           KaTeX 0.16.11, loaded only when the Brief opens
 vendor/fonts/           Inter and IBM Plex Mono, woff2
 scripts/                build_data.py, build_boundaries.py, make_og.py
 legacy/                 the original upload-driven dashboard
 ```
 
-Rendering is MapLibre GeoJSON sources with `circle` layers and no DOM markers. Changing year or scenario updates paint and filter expressions; the sources are built once and never rebuilt. Hover uses `feature-state`. If the basemap fails to load, the app falls back to department outlines over a flat background and everything else still works.
+Rendering is MapLibre GeoJSON sources with `circle` layers for schools and `symbol` layers for sites, and no DOM markers. Site glyphs are drawn to a canvas at load and registered with the style, so there are no image files to fetch. Changing year or scenario updates paint and filter expressions; the sources are built once and never rebuilt. Hover uses `feature-state`. If the basemap fails to load, the app falls back to department outlines over a flat background and everything else still works.
 
 ---
 

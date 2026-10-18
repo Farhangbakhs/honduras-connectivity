@@ -37,7 +37,9 @@ function h(tag, attrs = {}, ...kids) {
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else node.setAttribute(k, String(v));
   }
-  for (const kid of kids.flat()) {
+  // flat(Infinity): sections nest arrays of arrays, and a surviving inner array
+  // gets stringified into "[object HTMLDivElement]" by append().
+  for (const kid of kids.flat(Infinity)) {
     if (kid == null || kid === false) continue;
     node.append(typeof kid === 'string' ? document.createTextNode(kid) : kid);
   }
@@ -47,7 +49,7 @@ function h(tag, attrs = {}, ...kids) {
 /** replaceChildren() stringifies null into the literal text "null", unlike the
  *  h() helper above. Anything conditional goes through here first. */
 function setChildren(node, ...kids) {
-  node.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
+  node.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
 }
 
 function swatch(colour, ring = false) {
@@ -55,6 +57,122 @@ function swatch(colour, ring = false) {
     class: `sw${ring ? ' sw--ring' : ''}`,
     style: ring ? `color:${colour}` : `background:${colour}`,
   });
+}
+
+/* --- maths -------------------------------------------------------------- */
+
+/**
+ * KaTeX is vendored, not loaded from a CDN, and it is only fetched when the
+ * Brief is first opened. The map is the default view and has no maths in it,
+ * so 275 KB of typesetting library has no business being on its critical path.
+ */
+let katexReady = null;
+
+function loadKatex() {
+  if (katexReady) return katexReady;
+  katexReady = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'vendor/katex/katex.min.css';
+    document.head.append(css);
+
+    const js = document.createElement('script');
+    js.src = 'vendor/katex/katex.min.js';
+    js.onload = () => resolve(window.katex);
+    js.onerror = () => reject(new Error('KaTeX failed to load'));
+    document.head.append(js);
+  });
+  return katexReady;
+}
+
+/**
+ * Typeset every element carrying data-tex. On failure the element keeps the
+ * raw LaTeX it already contains, which is still readable, rather than going
+ * blank.
+ */
+async function typeset(root) {
+  const targets = root.querySelectorAll('[data-tex]:not([data-typeset])');
+  if (!targets.length) return;
+  let katex;
+  try {
+    katex = await loadKatex();
+  } catch {
+    for (const el of targets) el.dataset.typeset = 'failed';
+    return;
+  }
+  for (const el of targets) {
+    try {
+      katex.render(el.dataset.tex, el, {
+        displayMode: el.dataset.display === 'block',
+        throwOnError: false,
+        output: 'htmlAndMathml',
+        strict: false,
+      });
+      el.dataset.typeset = 'done';
+    } catch {
+      el.dataset.typeset = 'failed';
+    }
+  }
+}
+
+/** A maths element that shows its own LaTeX until KaTeX replaces it. */
+function tex(source, display = false) {
+  return h(display ? 'div' : 'span', {
+    class: display ? 'eq' : 'eqi',
+    dataset: { tex: source, display: display ? 'block' : 'inline' },
+    text: source,
+  });
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * The legend mark for a map glyph. These mirror the canvas glyphs in map.js
+ * exactly — circles for schools, angular marks for sites — so the rail teaches
+ * the shape language the map uses. If one changes, change both.
+ */
+function mark(kind, colour) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 14 14');
+  svg.setAttribute('class', 'mk');
+  svg.setAttribute('aria-hidden', 'true');
+  const add = (tag, attrs) => {
+    const n = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    svg.append(n);
+    return n;
+  };
+
+  switch (kind) {
+    case 'school':
+      add('circle', { cx: 7, cy: 7, r: 3, fill: colour });
+      break;
+    case 'tower':
+      add('rect', { x: 3.5, y: 3.5, width: 7, height: 7, fill: colour });
+      break;
+    case 'existing':
+      add('rect', { x: 3.9, y: 3.9, width: 6.2, height: 6.2, fill: 'none', stroke: colour, 'stroke-width': 1.3 });
+      break;
+    case 'wisp':
+      add('circle', { cx: 7, cy: 7, r: 5.6, fill: 'none', stroke: colour, 'stroke-width': 1, opacity: 0.75 });
+      add('rect', {
+        x: 4.4, y: 4.4, width: 5.2, height: 5.2, fill: colour,
+        transform: 'rotate(45 7 7)',
+      });
+      break;
+    case 'coverage':
+      add('circle', { cx: 7, cy: 7, r: 5.4, fill: colour, 'fill-opacity': 0.14, stroke: colour, 'stroke-width': 0.9, 'stroke-opacity': 0.55 });
+      break;
+    case 'ring':
+      add('circle', {
+        cx: 7, cy: 7, r: 5.4, fill: 'none', stroke: colour,
+        'stroke-width': 1.1, 'stroke-dasharray': '2.6 2',
+      });
+      break;
+    default:
+      add('rect', { x: 3, y: 3, width: 8, height: 8, fill: colour });
+  }
+  return svg;
 }
 
 /* --- layer definitions -------------------------------------------------- */
@@ -68,13 +186,14 @@ const RAW_FILES = [
 ];
 
 export const LAYERS = [
-  { key: 'schools', label: 'Schools', colour: null, on: true },
-  { key: 'sitesWisp', label: 'WISP sites', colour: () => C.wisp, on: true },
-  { key: 'sitesTower', label: 'New towers', colour: () => C.tower, on: true },
-  { key: 'sitesExisting', label: 'Existing towers', colour: () => C.existing, on: false },
-  { key: 'rings', label: `Coverage rings (${WISP_RADIUS_KM} km)`, colour: () => C.accent, ring: true, on: true },
+  { key: 'schools', label: 'Schools', glyph: 'school', colour: () => C.connected, on: true },
+  { key: 'sitesWisp', label: 'WISP sites', glyph: 'wisp', colour: () => C.wisp, on: true },
+  { key: 'sitesTower', label: 'New towers', glyph: 'tower', colour: () => C.tower, on: true },
+  { key: 'sitesExisting', label: 'Existing towers', glyph: 'existing', colour: () => C.existing, on: false },
+  { key: 'coverage', label: `WISP coverage (${WISP_RADIUS_KM} km)`, glyph: 'coverage', colour: () => C.wisp, on: false },
+  { key: 'rings', label: 'Selection radius', glyph: 'ring', colour: () => C.accent, on: true },
   { key: 'choropleth', label: 'Department choropleth', colour: null, on: false },
-  { key: 'towers', label: 'Tower inventory', colour: () => C.existing, on: false, dim: true },
+  { key: 'towers', label: 'Tower inventory', glyph: 'existing', colour: () => C.existing, on: false, dim: true },
 ];
 
 /* --- UI controller ------------------------------------------------------ */
@@ -148,7 +267,7 @@ export class UI {
       frag.append(h('label', { class: 'lay' },
         input,
         h('span', { class: 'box' }),
-        def.colour ? swatch(def.colour(), def.ring) : null,
+        def.glyph ? mark(def.glyph, def.colour()) : null,
         h('span', { class: 't', text: def.label }),
         count));
     }
@@ -381,32 +500,37 @@ export class UI {
     const compare = state.scenario === 'c';
     const y = state.year;
     const s = this.#stats();
+    const connHere = state.dept === null ? s.connected[y] : s.deptConnected(state.dept, y);
+    const totalHere = state.dept === null ? s.total : s.deptTotal[state.dept];
+
     const rows = compare
       ? [
-          [C.connected, 'Connected, both', this.data.compare[y].both],
-          [C.tower, 'Unrestricted only', this.data.compare[y].uOnly],
-          [C.wisp, 'Milestone only', this.data.compare[y].mOnly],
-          [C.unconnected, 'Unreached in both', this.data.compare[y].neither],
-          [C.existing, 'Site (either scenario)', null],
+          ['school', C.connected, 'Connected, both', this.data.compare[y].both],
+          ['school', C.tower, 'Unrestricted only', this.data.compare[y].uOnly],
+          ['school', C.wisp, 'Milestone only', this.data.compare[y].mOnly],
+          ['school', C.unconnected, 'Unreached in both', this.data.compare[y].neither],
+          ['existing', C.existing, 'Site (either scenario)', null],
         ]
       : [
-          [C.connected, 'Connected', state.dept === null ? s.connected[y] : s.deptConnected(state.dept, y)],
-          [C.unconnected, 'Unconnected', (state.dept === null ? s.total : s.deptTotal[state.dept])
-            - (state.dept === null ? s.connected[y] : s.deptConnected(state.dept, y))],
-          [C.wisp, 'WISP-equipped site', s.wispUniq[y]],
-          [C.tower, 'New tower, no WISP', null],
-          [C.existing, 'Existing tower, no WISP', null],
+          ['school', C.connected, 'School, connected', connHere],
+          ['school', C.unconnected, 'School, unconnected', totalHere - connHere],
+          ['wisp', C.wisp, 'WISP site', s.wispUniq[y]],
+          ['tower', C.tower, 'New tower, no WISP', null],
+          ['existing', C.existing, 'Existing tower, no WISP', null],
         ];
 
     const frag = document.createDocumentFragment();
-    for (const [colour, label, count] of rows) {
+    for (const [glyph, colour, label, count] of rows) {
       frag.append(h('div', { class: 'leg' },
-        swatch(colour),
+        mark(glyph, colour),
         h('span', { text: label }),
         count == null ? null : h('span', { class: 'n', text: int(count) })));
     }
     frag.append(h('div', { class: 'leg' },
-      swatch(C.accent, true), h('span', { text: 'Selection and links' })));
+      mark('ring', C.accent), h('span', { text: 'Selection radius and links' })));
+    if (!compare) {
+      frag.append(h('p', { class: 'leg-note', text: 'Schools are circles. Sites are square, so the two separate by shape as well as colour.' }));
+    }
     if (compare) {
       frag.append(h('p', {
         class: 'leg-note',
@@ -421,6 +545,7 @@ export class UI {
       sitesWisp: compare ? null : s.wispUniq[y],
       sitesTower: null,
       sitesExisting: null,
+      coverage: compare ? null : s.wispUniq[y],
       rings: null,
       choropleth: null,
       towers: this.data.towers.n,
@@ -745,6 +870,11 @@ export class UI {
     this.#closeResults();
   }
 
+  /** Called when the Brief becomes visible; typesets the maths once. */
+  async typesetBrief() {
+    await typeset(this.el.briefCol);
+  }
+
   /* --- info panel ------------------------------------------------------ */
 
   toggleInfo(force) {
@@ -873,8 +1003,21 @@ export class UI {
     this.el.briefCol.replaceChildren(
       h('h1', { text: 'Honduras school connectivity: the cost of visible progress' }),
       h('p', { class: 'sub', text: f.subtitle }),
+      h('p', { class: 'standfirst', text: 'No prior knowledge of optimisation is assumed. The bottom line is first; the background behind it follows.' }),
 
       sec('Bottom line', f.brief.bluf.map((p, i) => h('p', { class: i === 0 ? 'bluf' : '', text: p }))),
+
+      sec('Background', [
+        f.brief.background.map((b) => h('div', { class: 'bg-item' },
+          h('h3', { text: b.head }),
+          h('p', { text: b.text }))),
+        h('details', { class: 'gloss' },
+          h('summary', { text: 'Terms used in this brief' }),
+          h('dl', { class: 'gloss-list' }, f.brief.glossary.flatMap((g) => [
+            h('dt', { text: g.term }),
+            h('dd', { text: g.def }),
+          ]))),
+      ]),
 
       sec('Key judgements', f.brief.judgements.map((j, i) => h('div', { class: 'jd' },
         h('i', { text: `${i + 1}.` }),
@@ -900,8 +1043,21 @@ export class UI {
         h('p', { text: f.brief.method.connection }),
         h('p', { text: f.brief.method.chain }),
         h('p', { text: f.brief.method.allocation }),
-        h('pre', { class: 'notation', text: f.brief.method.notation.join('\n') }),
-        h('p', { class: 'tag', style: 'color:var(--fg-3);font-size:12px', text: f.brief.method.notation_note })),
+
+        h('h3', { class: 'eq-head', text: 'The programme' }),
+        h('p', { text: 'Each line below is given twice: once as the solver sees it, and once in plain English. Reading only the English loses nothing.' }),
+
+        f.brief.method.equations.map((e, i) => h('div', { class: 'eq-block' },
+          h('div', { class: 'eq-label' }, h('i', { text: `${i === 0 ? '' : `C${i}`}` }), e.label),
+          tex(e.tex, true),
+          h('p', { class: 'eq-says', text: e.says }))),
+
+        h('h3', { class: 'eq-head', text: 'Symbols' }),
+        h('dl', { class: 'sym-list' }, f.brief.method.symbols.flatMap((s) => [
+          h('dt', {}, tex(s.tex)),
+          h('dd', { text: s.means }),
+        ])),
+        h('p', { class: 'tag', style: 'color:var(--fg-3);font-size:12px;margin-top:12px', text: f.brief.method.notation_note })),
 
       h('div', { id: 'brief-foot' },
         h('p', { text: f.scope }),
