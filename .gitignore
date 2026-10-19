@@ -5,3 +5,9 @@ __pycache__/
 
 # the task brief, kept local
 honduras_site_prompt.md
+
+# supplied v2 source material, kept local rather than shipped
+brief_v2_prompt.md
+brief_preview.html
+/findings.json
+brief_reference_renderer.mjs

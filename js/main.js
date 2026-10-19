@@ -155,7 +155,15 @@ function setPlayUI(on) {
 
 /* --- URL state ---------------------------------------------------------- */
 
+/** A bare "#section-id" is a Brief anchor rather than packed view state. */
+function isAnchorHash(raw) {
+  return raw.length > 0 && !raw.includes('=');
+}
+
 function syncHash() {
+  // Do not clobber a section anchor the reader followed into the Brief; the
+  // URL is more useful pointing at the section than restating the view.
+  if (state.view === 'brief' && isAnchorHash(location.hash.replace(/^#/, ''))) return;
   const parts = [`v=${state.view}`, `s=${state.scenario}`, `y=${state.year}`];
   if (state.dept !== null) parts.push(`d=${state.dept}`);
   if (state.selection) parts.push(`sel=${state.selection.kind[0]}${state.selection.ix}`);
@@ -163,9 +171,17 @@ function syncHash() {
   if (location.hash !== hash) history.replaceState(null, '', hash);
 }
 
+let pendingAnchor = null;
+
 function readHash() {
   const raw = location.hash.replace(/^#/, '');
   if (!raw) return;
+  if (isAnchorHash(raw)) {
+    // e.g. #formulation — open the Brief scrolled to that section
+    state.view = 'brief';
+    pendingAnchor = decodeURIComponent(raw);
+    return;
+  }
   const q = new URLSearchParams(raw.replace(/&/g, '&'));
   const view = q.get('v');
   const scn = q.get('s');
@@ -305,7 +321,13 @@ function wireSheet() {
     ui.render();
     refreshSelection();
     // deep link straight into the Brief needs its maths typeset too
-    if (state.view === 'brief') ui.typesetBrief();
+    if (state.view === 'brief') {
+      ui.typesetBrief().then(() => {
+        if (!pendingAnchor) return;
+        document.getElementById(pendingAnchor)?.scrollIntoView();
+        pendingAnchor = null;
+      });
+    }
     if (state.dept !== null) map.flyToDept(state.dept);
     if (state.selection?.kind === 'school') map.flyToSchool(state.selection.ix);
 

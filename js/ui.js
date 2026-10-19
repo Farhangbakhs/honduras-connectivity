@@ -8,7 +8,7 @@
 
 import { YEARS, WISP_RADIUS_KM, search } from './data.js';
 import { C } from './map.js';
-import { renderYearBars, deptBars } from './charts.js';
+import { renderYearBars } from './charts.js';
 
 /* --- formatting --------------------------------------------------------- */
 
@@ -115,10 +115,11 @@ async function typeset(root) {
   }
 }
 
-/** A maths element that shows its own LaTeX until KaTeX replaces it. */
+/** A maths element that shows its own LaTeX until KaTeX replaces it.
+ *  Display maths sits inside .eqm; the equation block itself is .eq. */
 function tex(source, display = false) {
   return h(display ? 'div' : 'span', {
-    class: display ? 'eq' : 'eqi',
+    class: display ? 'texd' : 'texi',
     dataset: { tex: source, display: display ? 'block' : 'inline' },
     text: source,
   });
@@ -224,7 +225,7 @@ export class UI {
       mapNote: document.getElementById('map-note'),
       search: document.getElementById('search'),
       searchWrap: document.getElementById('search-wrap'),
-      results: document.getElementById('results'),
+      results: document.getElementById('search-results'),
       info: document.getElementById('info'),
       infoBody: document.getElementById('info-body'),
       infoBtn: document.getElementById('info-btn'),
@@ -398,7 +399,6 @@ export class UI {
     const connected = state.dept === null ? s.connected[y] : s.deptConnected(state.dept, y);
     const share = total ? (100 * connected) / total : 0;
 
-    const flag = s.rowCountsDiffer && state.scenario === 'm';
     const dl = document.createDocumentFragment();
 
     dl.append(
@@ -411,15 +411,15 @@ export class UI {
 
     const rows = [
       ['Device packages', int(s.devices[y])],
-      ['New towers', int(s.towers[y]), flag ? `Report counts CSV rows. ${int(s.towersUniq[y])} distinct sites — see data note M1.` : null],
-      ['WISP units', int(s.wisp[y]), flag ? `Report counts CSV rows. ${int(s.wispUniq[y])} distinct sites — see data note M1.` : null],
+      ['New towers', int(s.towers[y])],
+      ['WISP units', int(s.wisp[y])],
       ['CAPEX to date', usd(s.capex[y])],
-      ['O&M run-rate', `${usd(s.opexRunRate[y])}`, null, '/yr'],
+      ['O&M run-rate', `${usd(s.opexRunRate[y])}`, '/yr'],
       ['Devices without coverage', int(s.idle[y])],
     ];
-    for (const [label, value, note, suffix] of rows) {
+    for (const [label, value, suffix] of rows) {
       dl.append(
-        h('dt', {}, label, note ? h('span', { class: 'flag', title: note, text: '†' }) : null),
+        h('dt', { text: label }),
         h('dd', {}, value, suffix ? h('small', { text: suffix }) : null),
       );
     }
@@ -886,7 +886,6 @@ export class UI {
   #buildInfo() {
     const f = this.data.findings;
     const c = f.constants;
-    const m = f.brief.method;
 
     const section = (label, ...kids) => h('section', { class: 'sec' },
       h('span', { class: 'lbl', style: 'display:block;margin-bottom:10px', text: label }), ...kids);
@@ -902,9 +901,15 @@ export class UI {
 
     this.el.infoBody.replaceChildren(
       section('Method',
-        h('p', { text: m.connection }),
-        h('p', { text: m.chain }),
-        h('p', { text: m.allocation })),
+        h('p', { text: 'A school counts as connected in a year when it holds a device package and lies within 10 km of a tower carrying a WISP unit.' }),
+        h('p', { text: 'Investment follows a prerequisite chain: a tower must stand before a WISP unit can be fitted to it, and a WISP unit must cover a school before that school’s device package produces a connection. Existing towers skip the first step.' }),
+        h('p', { text: 'The budget is released as $25M a year and allocated across the 18 departments in proportion to their unconnected school counts, with unspent funds carried over.' }),
+        h('p', {}, 'The full formulation, with every constraint and its sources, is in the ',
+          h('a', {
+            href: '#',
+            onclick: (e) => { e.preventDefault(); this.toggleInfo(false); this.actions.setView('brief'); },
+            text: 'Brief',
+          }), '.')),
 
       section('Cost parameters',
         h('dl', { class: 'kpi' },
@@ -917,17 +922,11 @@ export class UI {
 
       section('Conventions on this site',
         h('ul', {},
-          h('li', { text: 'O&M is charged from the year after a school connects, through year 5. It is the only convention that keeps the unrestricted plan inside the $125M budget.' }),
-          h('li', { text: 'Device packages bought for schools that never connect carry no year in the model output, so they are charged to year 5. That is why year-5 CAPEX here matches the programme total in the Brief.' }),
-          h('li', { text: 'Site geometry is deduplicated by site_id, so no site is drawn twice. Tower and WISP counts follow the report, which counts CSV rows — the difference is flagged with † and explained below.' }),
-          h('li', { text: 'The link from a school to its serving site is derived: the nearest WISP-equipped site active by the selected year. The solver’s own assignment was never exported.' }),
+          h('li', { text: 'O&M is charged from the year after a school connects, through year 5.' }),
+          h('li', { text: 'Device packages bought for schools that never connect carry no year in the model output, so they are charged to year 5.' }),
+          h('li', { text: 'Site geometry is deduplicated by site_id, so no site is drawn twice.' }),
+          h('li', { text: 'The link from a school to its serving site is derived: the nearest WISP-equipped site active by the selected year.' }),
           h('li', { text: 'Coordinates are rounded to five decimal places, about one metre.' }))),
-
-      section('Data notes',
-        f.mismatches.map((x) => h('div', { class: 'mm' },
-          h('h3', {}, h('i', { text: x.id }), x.head),
-          h('p', { text: x.text }),
-          h('p', { class: 'fix', text: x.resolution })))),
 
       section('Keyboard',
         h('div', { class: 'keys' }, keys.flatMap(([k, d]) => [h('kbd', { text: k }), h('span', { text: d })]))),
@@ -948,129 +947,347 @@ export class UI {
   }
 
   /* --- brief ----------------------------------------------------------- */
+  /* --- brief ----------------------------------------------------------- */
 
   #buildBrief() {
-    const { data } = this;
-    const f = data.findings;
+    const f = this.data.findings;
+    const b = f.brief;
+    const cites = new Citations(b.references);
+
+    const col = this.el.briefCol;
+    col.replaceChildren();
+
+    col.append(
+      h('h1', { text: b.title }),
+      h('p', { class: 'sub', text: b.subtitle }),
+      h('dl', { class: 'meta' }, b.meta.flatMap(([label, value]) => [
+        h('dt', { text: label }),
+        h('dd', { text: value }),
+      ])),
+      this.#contents(b.sections),
+    );
+
+    for (const section of b.sections) {
+      const el = h('section', { id: section.id }, h('h2', { text: section.heading }));
+      for (const block of section.blocks) {
+        const node = this.#block(block, cites, b);
+        if (node) el.append(node);
+      }
+      col.append(el);
+    }
+
+    col.append(this.#briefFoot());
+  }
+
+  /** One line of section links in mono, wrapping. No sticky sidebar. */
+  #contents(sections) {
+    const nav = h('nav', { class: 'toc', 'aria-label': 'Contents' });
+    sections.forEach((s, i) => {
+      if (i) nav.append(h('span', { class: 'toc-sep', text: '·' }));
+      // a real anchor: the browser sets the hash and scrolls, and the router
+      // reads a bare "#section-id" back on a cold load
+      nav.append(h('a', { href: `#${s.id}`, text: s.heading }));
+    });
+    return nav;
+  }
+
+  #briefFoot() {
+    const f = this.data.findings;
+    return h('div', { id: 'brief-foot' },
+      h('p', { text: f.scope }),
+      h('p', {}, 'Data: Giga (UNICEF–ITU), OpenCellID. Boundaries: geoBoundaries ODbL 1.0. Basemap: © CARTO, © OpenStreetMap contributors.'),
+      h('p', {},
+        'Download data: ',
+        RAW_FILES.flatMap((name, i) => [
+          i ? ' · ' : '',
+          h('a', { href: `data/raw/${name}`, download: name, text: name.replace('.csv', '') }),
+        ])),
+      h('p', {},
+        h('a', { href: 'https://github.com/Farhangbakhs/honduras-connectivity', rel: 'noopener', text: 'Repository' }), ' · ',
+        h('a', {
+          href: '#',
+          onclick: (e) => { e.preventDefault(); this.actions.setView('map'); },
+          text: 'Open the map',
+        })));
+  }
+
+  /* --- block dispatch --------------------------------------------------- */
+
+  #block(block, cites, brief) {
+    const rich = (text, tag = 'p', cls = null) => {
+      const node = h(tag, cls ? { class: cls } : {});
+      node.append(renderRich(text, cites));
+      return node;
+    };
+
+    switch (block.type) {
+      case 'lead':
+        return rich(block.text, 'p', 'lead');
+
+      case 'p':
+        return rich(block.text);
+
+      case 'h3':
+        return h('h3', { text: block.text });
+
+      case 'list':
+        return h('ul', { class: 'plain' }, block.items.map((t) => rich(t, 'li')));
+
+      case 'judgements':
+        return h('ol', { class: 'kj' }, block.items.map((item) => h('li', {},
+          rich(item.text),
+          h('div', { class: 'kjm' },
+            h('span', {
+              class: `conf c-${item.confidence.toLowerCase()}`,
+              text: `${item.confidence} confidence`,
+            }),
+            rich(item.basis, 'span')))));
+
+      case 'table':
+        return this.#staticTable(block, cites);
+
+      case 'chain':
+        return h('ol', { class: 'chain' }, block.steps.map((s) => h('li', {},
+          h('b', { text: s.label }),
+          rich(s.detail, 'span'))));
+
+      case 'defs':
+        return h('table', { class: 'defs' },
+          h('caption', { text: block.title }),
+          h('tbody', {}, block.items.map((item) => h('tr', {},
+            h('td', {}, tex(item.tex)),
+            h('td', {}, renderRich(item.means, cites))))));
+
+      case 'eq':
+        return h('div', { class: 'eq' },
+          h('div', { class: 'eqh' },
+            h('span', { text: block.label }),
+            h('span', { text: `(${block.n})` })),
+          h('div', { class: 'eqm' }, tex(block.tex, true)),
+          block.says ? rich(block.says, 'p', 'says') : null);
+
+      case 'deflist':
+        return h('dl', { class: 'dl' }, block.items.flatMap((item) => [
+          h('dt', { text: item.term }),
+          h('dd', {}, renderRich(item.text, cites)),
+        ]));
+
+      case 'comparison_table':
+        return this.#comparisonTable(block.caption);
+
+      case 'department_chart':
+        return this.#departmentChart(block.caption);
+
+      case 'recs':
+        return h('div', { class: 'recs' }, block.items.map((item) => h('div', {},
+          h('h4', { text: item.head }),
+          rich(item.text))));
+
+      case 'glossary':
+        return h('dl', { class: 'dl' }, brief.glossary.flatMap((g) => [
+          h('dt', { text: g.term }),
+          h('dd', {}, renderRich(g.def ?? g.text ?? '', cites)),
+        ]));
+
+      case 'references':
+        // rendered last, by which point every citation has a number
+        return h('ol', { class: 'refs' }, cites.list().map((r) => h('li', { id: `ref-${r.n}` },
+          r.text,
+          r.url ? ' ' : null,
+          r.url ? h('a', { href: r.url, rel: 'noopener', text: linkLabel(r.url) }) : null)));
+
+      default:
+        // an unknown block type is a data error, not something to swallow
+        throw new Error(`brief: unknown block type "${block.type}"`);
+    }
+  }
+
+  /* --- tables ----------------------------------------------------------- */
+
+  #staticTable(block, cites) {
+    const numeric = new Set(block.numeric || []);
+    const head = h('tr', {}, block.columns.map((c, i) => h('th', {
+      class: numeric.has(i) ? 'n' : null, text: c,
+    })));
+    const body = block.rows.map((row) => h('tr', {}, row.map((cell, i) => (i === 0
+      ? h('th', { scope: 'row' }, renderRich(String(cell), cites))
+      : h('td', { class: numeric.has(i) ? 'n' : null }, renderRich(String(cell), cites))))));
+
+    return h('figure', {},
+      h('table', {}, h('thead', {}, head), h('tbody', {}, body)),
+      h('figcaption', { text: block.caption }));
+  }
+
+  /**
+   * The scenario comparison, computed from the model output rather than typed
+   * out, so it cannot drift from the map.
+   */
+  #comparisonTable(caption) {
+    const f = this.data.findings;
+    const su = this.data.stats.u;
+    const sm = this.data.stats.m;
     const u = f.scenarios.u;
     const m = f.scenarios.m;
-    const su = data.stats.u;
-    const sm = data.stats.m;
 
-    const sec = (title, ...kids) => h('section', {}, h('h2', { text: title }), ...kids);
+    const rows = [];
+    const row = (label, a, bb, fmt, diffFmt) => rows.push({ label, a, b: bb, fmt, diffFmt });
+    const group = (label) => rows.push({ group: label });
 
-    // --- scenario comparison table, computed
-    const cmpRows = [
-      ['Connected by year 5', int(su.connected[5]), int(sm.connected[5]), signed(sm.connected[5] - su.connected[5])],
-      ['Share of 12,578', pct((100 * su.connected[5]) / su.total), pct((100 * sm.connected[5]) / sm.total),
-        `−${((100 * su.connected[5]) / su.total - (100 * sm.connected[5]) / sm.total).toFixed(1)}pp`],
-      ['Not reached', int(su.total - su.connected[5]), int(sm.total - sm.connected[5]),
-        signed((sm.total - sm.connected[5]) - (su.total - su.connected[5]))],
-      ['GROUP', 'New connections per year'],
-      ...[1, 2, 3, 4, 5].map((y) => [`Year ${y}`, int(su.newConnections[y]), int(sm.newConnections[y]),
-        signed(sm.newConnections[y] - su.newConnections[y])]),
-      ['GROUP', 'Infrastructure and cost'],
-      ['Device packages', int(u.devices.v), int(m.devices.v), signed(m.devices.v - u.devices.v)],
-      ['New towers', int(u.towers.v), int(m.towers.v), signed(m.towers.v - u.towers.v)],
-      ['WISP units', int(u.wisp.v), int(m.wisp.v), signed(m.wisp.v - u.wisp.v)],
-      ['CAPEX', usdc(u.capex.v), usdc(m.capex.v), `−${usdc(u.capex.v - m.capex.v)}`],
-      ['O&M to year 5', usdc(u.opex_horizon.v), usdc(m.opex_horizon.v), `+${usdc(m.opex_horizon.v - u.opex_horizon.v)}`],
-      ['O&M run-rate from 2030', `${usdc(u.opex_runrate.v)}/yr`, `${usdc(m.opex_runrate.v)}/yr`,
-        `−${usdc(u.opex_runrate.v - m.opex_runrate.v)}/yr`],
-      ['Stranded device packages', int(u.stranded_devices.v), int(m.stranded_devices.v),
-        signed(m.stranded_devices.v - u.stranded_devices.v)],
-    ];
+    const uPct = (100 * su.connected[5]) / su.total;
+    const mPct = (100 * sm.connected[5]) / sm.total;
 
-    const table = h('table', { class: 'btab' },
-      h('caption', { text: 'Both plans run on the same $125M budget over the same five years.' }),
-      h('thead', {}, h('tr', {},
-        h('th', { text: '' }), h('th', { text: 'Unrestricted' }), h('th', { text: 'Milestone' }), h('th', { text: 'Difference' }))),
-      h('tbody', {}, cmpRows.map((r) => {
-        if (r[0] === 'GROUP') {
-          return h('tr', { class: 'grp' }, h('td', { colspan: 4, text: r[1] }));
-        }
-        const neg = typeof r[3] === 'string' && (r[3].startsWith('−') || r[3].startsWith('-'));
-        return h('tr', {},
-          h('td', { text: r[0] }), h('td', { text: r[1] }), h('td', { text: r[2] }),
-          h('td', { class: neg ? 'neg' : '', text: r[3] }));
-      })));
+    row('Connected by year 5', su.connected[5], sm.connected[5], gbInt, signedInt);
+    row('Share of schools in scope', uPct, mPct, pct1, signedPP);
+    row('Not reached', su.total - su.connected[5], sm.total - sm.connected[5], gbInt, signedInt);
 
-    // --- department exposure chart
-    const deptRows = data.lookups.dept
-      .map((name, d) => ({ name, value: sm.deptPct[d][5], marker: su.deptPct[d][5] }))
+    group('New connections per year');
+    for (let y = 1; y <= YEARS; y++) {
+      row(`Year ${y}`, su.newConnections[y], sm.newConnections[y], gbInt, signedInt);
+    }
+
+    group('Infrastructure and cost');
+    row('Device packages', u.devices.v, m.devices.v, gbInt, signedInt);
+    row('New towers', u.towers.v, m.towers.v, gbInt, signedInt);
+    row('WISP units', u.wisp.v, m.wisp.v, gbInt, signedInt);
+    row('CAPEX', u.capex.v, m.capex.v, moneyM, signedMoney);
+    row('O&M to year 5', u.opex_horizon.v, m.opex_horizon.v, moneyM, signedMoney);
+    row('Unspent budget', u.unspent.v, m.unspent.v, moneyM, signedMoney);
+    row('O&M from 2030', u.opex_runrate.v, m.opex_runrate.v, moneyRate, signedMoneyRate);
+    row('Stranded device packages', u.stranded_devices.v, m.stranded_devices.v, gbInt, signedInt);
+
+    const body = rows.map((r) => (r.group
+      ? h('tr', { class: 'grp' }, h('th', { colspan: 4, text: r.group }))
+      : h('tr', {},
+          h('th', { scope: 'row', text: r.label }),
+          h('td', { text: r.fmt(r.a) }),
+          h('td', { text: r.fmt(r.b) }),
+          h('td', { text: r.diffFmt(r.b - r.a) }))));
+
+    return h('figure', {},
+      h('div', { class: 'tw' },
+        h('table', { class: 'num' },
+          h('thead', {}, h('tr', {},
+            h('th', {}),
+            h('th', { text: 'Unrestricted' }),
+            h('th', { text: 'Milestone-constrained' }),
+            h('th', { text: 'Difference' }))),
+          h('tbody', {}, body))),
+      h('figcaption', { text: caption }));
+  }
+
+  /** Department coverage under milestones, with a tick at the unrestricted level. */
+  #departmentChart(caption) {
+    const su = this.data.stats.u;
+    const sm = this.data.stats.m;
+    const rows = this.data.lookups.dept
+      .map((name, d) => ({ name, value: sm.deptPct[d][YEARS], marker: su.deptPct[d][YEARS] }))
       .sort((a, b) => a.value - b.value);
 
-    this.el.briefCol.replaceChildren(
-      h('h1', { text: 'Honduras school connectivity: the cost of visible progress' }),
-      h('p', { class: 'sub', text: f.subtitle }),
-      h('p', { class: 'standfirst', text: 'No prior knowledge of optimisation is assumed. The bottom line is first; the background behind it follows.' }),
+    const bars = h('div', { class: 'bars' }, rows.map((r) => h('div', { class: 'bar' },
+      h('span', { text: r.name }),
+      h('i', { style: `--w:${r.value.toFixed(1)}%` },
+        h('u', {
+          style: `--u:${r.marker.toFixed(1)}%`,
+          title: `Unrestricted ${r.marker.toFixed(1)}%`,
+        })),
+      h('b', { text: `${r.value.toFixed(1)}%` }))));
 
-      sec('Bottom line', f.brief.bluf.map((p, i) => h('p', { class: i === 0 ? 'bluf' : '', text: p }))),
-
-      sec('Background', [
-        f.brief.background.map((b) => h('div', { class: 'bg-item' },
-          h('h3', { text: b.head }),
-          h('p', { text: b.text }))),
-        h('details', { class: 'gloss' },
-          h('summary', { text: 'Terms used in this brief' }),
-          h('dl', { class: 'gloss-list' }, f.brief.glossary.flatMap((g) => [
-            h('dt', { text: g.term }),
-            h('dd', { text: g.def }),
-          ]))),
-      ]),
-
-      sec('Key judgements', f.brief.judgements.map((j, i) => h('div', { class: 'jd' },
-        h('i', { text: `${i + 1}.` }),
-        h('div', {}, h('p', { text: j.text }), h('p', { class: 'tag', text: j.tag }))))),
-
-      sec('Scenario comparison', table),
-
-      sec('The cost of early milestones', h('p', { text: f.brief.milestone_cost })),
-
-      sec('Department exposure',
-        h('p', { text: f.brief.department_exposure }),
-        deptBars(deptRows),
-        h('p', { class: 'tag', style: 'margin-top:10px;color:var(--fg-3);font-size:12px',
-          text: 'Bars show year-5 coverage under milestones. The tick marks the same department under the unrestricted plan.' })),
-
-      sec('Recommendations', f.brief.recommendations.map((r) => h('div', { class: 'rec-item' },
-        h('h3', { text: r.head }), h('p', { text: r.text })))),
-
-      sec('Limitations and assumptions',
-        h('ul', { class: 'tight' }, f.brief.limitations.map((t) => h('li', { text: t })))),
-
-      sec('Method in brief',
-        h('p', { text: f.brief.method.connection }),
-        h('p', { text: f.brief.method.chain }),
-        h('p', { text: f.brief.method.allocation }),
-
-        h('h3', { class: 'eq-head', text: 'The programme' }),
-        h('p', { text: 'Each line below is given twice: once as the solver sees it, and once in plain English. Reading only the English loses nothing.' }),
-
-        f.brief.method.equations.map((e, i) => h('div', { class: 'eq-block' },
-          h('div', { class: 'eq-label' }, h('i', { text: `${i === 0 ? '' : `C${i}`}` }), e.label),
-          tex(e.tex, true),
-          h('p', { class: 'eq-says', text: e.says }))),
-
-        h('h3', { class: 'eq-head', text: 'Symbols' }),
-        h('dl', { class: 'sym-list' }, f.brief.method.symbols.flatMap((s) => [
-          h('dt', {}, tex(s.tex)),
-          h('dd', { text: s.means }),
-        ])),
-        h('p', { class: 'tag', style: 'color:var(--fg-3);font-size:12px;margin-top:12px', text: f.brief.method.notation_note })),
-
-      h('div', { id: 'brief-foot' },
-        h('p', { text: f.scope }),
-        h('p', {}, 'Data: Giga (UNICEF–ITU), OpenCellID. Boundaries: geoBoundaries ODbL 1.0. Basemap: © CARTO, © OpenStreetMap contributors.'),
-        h('p', {},
-          'Download data: ',
-          RAW_FILES.flatMap((name, i) => [
-            i ? ' · ' : '',
-            h('a', { href: `data/raw/${name}`, download: name, text: name.replace('.csv', '') }),
-          ])),
-        h('p', {},
-          h('a', { href: 'https://github.com/farhangbakhs/honduras-connectivity', rel: 'noopener', text: 'Repository' }), ' · ',
-          h('a', { href: '#', onclick: (e) => { e.preventDefault(); this.actions.setView('map'); }, text: 'Open the map' }))),
-    );
+    return h('figure', {}, bars, h('figcaption', { text: caption }));
   }
 }
+
+/* ===========================================================================
+   Brief text: inline maths, citations and number formatting
+   =========================================================================== */
+
+/** Matches \( ... \) inline maths and [@key] or [@a; @b] citations.
+ *  `$` is deliberately not a maths delimiter: the copy is full of US$ amounts. */
+const RICH_TOKEN = /\\\(([\s\S]+?)\\\)|\[@([^\]]+)\]/g;
+
+/**
+ * Turn one source string into nodes. Text goes through createTextNode, so
+ * nothing is ever interpreted as HTML — no innerHTML anywhere in this path.
+ */
+function renderRich(text, cites) {
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  let m;
+  RICH_TOKEN.lastIndex = 0;
+  while ((m = RICH_TOKEN.exec(text)) !== null) {
+    if (m.index > last) frag.append(text.slice(last, m.index));
+    if (m[1] !== undefined) {
+      frag.append(tex(m[1]));
+    } else {
+      frag.append(citation(m[2], cites));
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) frag.append(text.slice(last));
+  return frag;
+}
+
+function citation(body, cites) {
+  const keys = body.split(';').map((k) => k.trim().replace(/^@/, '')).filter(Boolean);
+  const span = h('span', { class: 'cite' }, '[');
+  keys.forEach((key, i) => {
+    if (i) span.append(', ');
+    const n = cites.number(key);
+    span.append(h('a', { href: `#ref-${n}`, text: String(n) }));
+  });
+  span.append(']');
+  return span;
+}
+
+/** Numbers citations by order of first appearance across the whole brief. */
+class Citations {
+  constructor(references) {
+    this.references = references || {};
+    this.order = [];
+    this.byKey = new Map();
+  }
+
+  number(key) {
+    if (!this.byKey.has(key)) {
+      if (!this.references[key]) {
+        throw new Error(`brief: citation [@${key}] has no entry in brief.references`);
+      }
+      this.byKey.set(key, this.order.push(key));
+    }
+    return this.byKey.get(key);
+  }
+
+  /** Cited keys only, in numbered order. */
+  list() {
+    return this.order.map((key, i) => ({ n: i + 1, key, ...this.references[key] }));
+  }
+}
+
+/** doi.org URLs show as doi:<suffix>; anything else shows its bare hostname. */
+function linkLabel(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'doi.org' || u.hostname === 'dx.doi.org') {
+      return `doi:${u.pathname.replace(/^\//, '')}`;
+    }
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/* --- number formatting -------------------------------------------------- */
+
+const MINUS = '−';
+const THIN = ' ';
+
+const gbInt = (v) => Math.round(v).toLocaleString('en-GB');
+const sign = (v) => (v < 0 ? MINUS : '+');
+const signedInt = (v) => (v === 0 ? '0' : sign(v) + gbInt(Math.abs(v)));
+
+const pct1 = (v) => `${v.toFixed(1)}%`;
+const signedPP = (v) => `${sign(v)}${Math.abs(v).toFixed(1)}${THIN}pp`;
+
+const moneyM = (v) => `$${(Math.abs(v) / 1e6).toFixed(1)}M`;
+const moneyRate = (v) => `${moneyM(v)}/yr`;
+const signedMoney = (v) => sign(v) + moneyM(v);
+const signedMoneyRate = (v) => sign(v) + moneyRate(v);

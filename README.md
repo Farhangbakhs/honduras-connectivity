@@ -8,27 +8,23 @@ A static analyst console for a mixed-integer linear programme that plans interne
 
 ---
 
-## Key findings
+## Summary
 
-**Unrestricted efficiency.** The model connects **12,409 of 12,578 schools (98.7%)** by year 5, deploying 10,705 device packages, 330 new towers and 1,336 WISP units for $118.5M of capital. It concentrates 99.4% of connections in year 5, which avoids four years of recurring O&M at $3,820 per school per year. Six departments reach 100%: Lempira, Santa Bárbara, Cortés, Copán, Intibucá and Atlántida.
+Honduras's public school system is largely offline. Of 15,492 public schools in the Giga dataset, 1,130 (7.3%) have an internet connection ([giga.global](https://giga.global/), [project report](https://github.com/Farhangbakhs/honduras-connectivity)). This brief evaluates how a fixed budget of US$125M over five years should be spent to connect the remaining schools with fixed wireless (WISP) infrastructure, and what it costs to require annual progress.
 
-**Milestone-constrained efficiency.** Annual targets of 10–30% of remaining unconnected schools cut year-5 coverage to **9,363 schools (74.4%)** on the same budget — a shortfall of 3,046 schools. The mechanism is operating cost crowding out capital: the milestone plan pays **$23,309,640** in O&M across the horizon against the unrestricted plan's **$278,860**, and never deploys $34.0M of the capital the unrestricted plan does.
+A multi-period mixed-integer linear programme (MILP) connects 12,409 of the 12,578 schools in scope (98.7%) by year 5 when the timing of investment is unrestricted. Requiring cumulative annual milestones of 10% to 30% of schools reduces this to 9,363 (74.4%) on an identical budget: a loss of 3,046 schools, or 24.2 percentage points.
 
-**The cost of gradual deployment.** Each percentage point of annual milestone compliance costs approximately **125 schools** connected by year 5 (3,046 ÷ 24.22 pp).
+The loss arises from operating cost rather than a shortage of capital. Each connected school incurs US$3,820 a year in operations and maintenance (O&M), charged against the same budget as construction, so schools connected early consume funds that would otherwise build infrastructure. For each additional school connected before year 5, approximately 1.06 schools are forgone at year 5.
 
-> An earlier version of this README gave this figure as ~250. That was wrong by a factor of two; it has been corrected. See data note **M2**.
+The loss is also geographically concentrated. Under milestones, Islas de la Bahía, Olancho, Yoro and Francisco Morazán finish below 37% coverage against 74.4% nationally. These departments depend most on new towers at US$100,000 each, while budget is allocated in proportion to unconnected schools rather than to the cost of connecting them.
 
-**Departmental exposure.** Under milestones, Islas de la Bahía falls to 24.4%, Olancho to 29.8%, Yoro to 31.6% and Francisco Morazán to 36.4%. These departments depend on new towers at $100,000 each but receive budget in proportion to their unconnected school count, not to the cost of reaching them.
-
-**The liability that outlasts the plan.** Sustaining the unrestricted end-state costs **$47.4M a year** from 2030; the milestone end-state costs **$35.8M a year**. Neither is inside the $125M capital budget.
-
-Scope: this site covers the two deterministic models only. The stochastic extension (budget scenarios, EVPI, VSS) is deliberately absent from the map, the inspector, the Brief and this README.
+The full brief, with the formulation, assumptions and references, is in the **Brief** view on the site.
 
 ---
 
 ## Using it
 
-The site opens on the **Map**. The **Brief** is a written product covering the same ground, written for a reader who has never seen this problem or an optimisation model before: it opens with the bottom line, then explains the connectivity problem, the tower/WISP/device chain, the budget and what a MILP actually decides, before getting to the findings. The formulation is set in LaTeX, and every constraint is given twice — once as the solver sees it, once in plain English.
+The site opens on the **Map**. The **Brief** is a sectioned and cited policy brief covering the same ground: summary, key judgements with confidence levels, context, data, the full formulation in LaTeX, assumptions, results and recommendations, with a numbered reference list. Each section has an anchor, so `#formulation` links straight to it.
 
 | | |
 |---|---|
@@ -40,26 +36,6 @@ The site opens on the **Map**. The **Brief** is a written product covering the s
 | `Esc` | clear selection |
 
 Schools are drawn as circles and sites as angular glyphs — a hollow square for an existing tower, a solid square for a newly built one, and a diamond inside a broadcast ring for a WISP-equipped site — so the two separate by shape as well as colour. The **WISP coverage** layer draws every active 10 km footprint; it is off by default because it stacks heavily in dense areas. Clicking a school draws its 10 km radius, every site inside it, and a line to the site that most plausibly serves it. Clicking a site does the reverse. Compare colours each school by how the two plans differ at the selected year, which puts the 3,046-school gap directly on the map. The state of the view lives in the URL, so a particular scenario, year, department or selected school can be linked to.
-
----
-
-## Data notes
-
-Four places where the model output and the report disagree, or where something could not be reproduced. All four are also in the site's info panel.
-
-| | Issue | Resolution |
-|---|---|---|
-| **M1** | `MilestonesSites.csv` holds 6,261 rows for only 5,307 distinct `site_id` values, and 68 ids carry contradictory rows (the same site once with `got_wisp=0`, once with `got_wisp=1`). The report counts rows, giving 164 new towers and 313 WISP units; counting distinct sites gives **156** and **302**, and milestone CAPEX falls from $84,536,900 to $83,676,400. `NoMilestoneSites.csv` has no duplicates. | Map geometry deduplicates by `site_id`, so no site is drawn twice. Headline KPIs keep the report's figures and are marked `†`, with the distinct-site count in the tooltip. |
-| **M2** | The old README's "~250 schools per percentage point" was wrong. 3,046 ÷ 24.22 pp = 125.8. | Corrected to ~125 throughout. |
-| **M3** | The report states that all 169 schools the unrestricted plan never connects lie outside any candidate tower's 10 km WISP radius. Measured against the model's own output: 111 have no site within 10 km, 24 have a WISP-equipped site in range but no device package, and **34 have both** — at a median 5.64 km, so not boundary artefacts. | The claim is not repeated. The school-to-site link is labelled *derived*, never the solver's assignment. |
-| **M4** | The 1,784 excluded schools cannot be recomputed here. The only candidate set published is the 7,297 existing towers, which leave 54% of the optimisation set beyond 10 km, so the model must also have had candidate new-tower locations that were never exported. The baseline school list cannot substitute: 1,935 duplicate rows, and its 1,130 connected schools collapse to 920 distinct records. | The 15,492 / 1,130 / 1,784 / 12,578 setup figures are carried from the report with source notes. No baseline school layer is drawn. The 7,297 towers ship as a labelled context layer, default off. |
-
-Everything else reproduces exactly. `python scripts/build_data.py --check` prints the full computed-vs-report table and exits non-zero on an unexpected mismatch; add `--audit` for the 10 km spatial audit behind M3.
-
-Two conventions the site adopts and states in its info panel:
-
-- **O&M** is charged from the year *after* a school connects, through year 5. It is the only convention that keeps the unrestricted plan inside the $125M budget ($118.77M including O&M).
-- **Device packages bought for schools that never connect** carry no year in the model output, so they are charged to year 5. This is why year-5 CAPEX on the map equals the programme total in the Brief.
 
 ---
 
