@@ -185,13 +185,18 @@ function readHash() {
   const q = new URLSearchParams(raw.replace(/&/g, '&'));
   const view = q.get('v');
   const scn = q.get('s');
-  const year = Number(q.get('y'));
+  const rawYear = q.get('y');
   const dept = q.get('d');
   const sel = q.get('sel');
 
   if (view === 'brief' || view === 'map') state.view = view;
   if (scn === 'u' || scn === 'm' || scn === 'c') state.scenario = scn;
-  if (Number.isInteger(year) && year >= 0 && year <= YEARS) state.year = year;
+  // Guard on presence first: Number(null) is 0, so a partial hash like
+  // "#v=brief" used to silently reset the year to the empty baseline.
+  if (rawYear !== null && rawYear !== '') {
+    const year = Number(rawYear);
+    if (Number.isInteger(year) && year >= 0 && year <= YEARS) state.year = year;
+  }
   if (dept !== null && dept !== '') {
     const d = Number(dept);
     if (Number.isInteger(d) && d >= 0 && d < data.lookups.dept.length) state.dept = d;
