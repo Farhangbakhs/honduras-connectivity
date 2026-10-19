@@ -431,8 +431,19 @@ function compareAggregates(payload) {
   return rows;
 }
 
+/**
+ * Bump when the shape of anything in data/ changes.
+ *
+ * This is not a cache optimisation, it is a correctness guard. GitHub Pages
+ * serves these files with max-age=600, so after a deploy a returning visitor
+ * can hold new JavaScript and ten-minute-old JSON. When the schema changed
+ * under it, that pairing threw on load. Tying the URL to the code version
+ * means code and data can never disagree.
+ */
+const DATA_VERSION = '2';
+
 async function fetchJSON(url) {
-  const res = await fetch(url, { cache: 'force-cache' });
+  const res = await fetch(`${url}?v=${DATA_VERSION}`);
   if (!res.ok) throw new Error(`${url}: ${res.status} ${res.statusText}`);
   return res.json();
 }
