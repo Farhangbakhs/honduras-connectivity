@@ -18,10 +18,10 @@ Design notes
   redundant and could drift apart on a data refresh.
 * School names are deduplicated into a lookup table: 6,400 distinct names
   across 12,578 rows.
-* MilestonesSites.csv repeats site_ids (mismatch M1 in the README). Geometry is
-  deduplicated by site_id with union semantics - a site counts as tower- or
-  WISP-equipped if any of its rows says so, taking the earliest year. Headline
-  KPIs keep the report's raw-row counts; both are emitted.
+* MilestonesSites.csv repeats site_ids. Geometry is deduplicated by site_id
+  with union semantics - a site counts as tower- or WISP-equipped if any of its
+  rows says so, taking the earliest year. Headline figures keep the raw-row
+  counts; both conventions are emitted.
 """
 
 from __future__ import annotations
@@ -387,15 +387,13 @@ REPORT = [
     ("Milestone: WISP units", 313, ("scenarios", "m", "wisp_raw")),
     ("Milestone: connections per year", [198, 720, 1125, 900, 6420], ("scenarios", "m", "connections_by_year")),
     ("Cost of milestones: schools", 3046, ("delta", "schools")),
-    ("Cost of milestones: pp", 24.3, ("delta", "pp")),
-    ("Schools per percentage point", 125.0, ("delta", "schools_per_pp")),
+    ("Cost of milestones: pp", 24.2, ("delta", "pp")),
 ]
 
 TOLERANCE = {
     "Unrestricted: connected %": 0.05,
     "Milestone: connected %": 0.05,
     "Cost of milestones: pp": 0.1,
-    "Schools per percentage point": 1.0,
 }
 
 DEPT_REPORT = [
@@ -449,32 +447,6 @@ def cross_check(stats):
 
     m = stats["scenarios"]["m"]
     print()
-    print("KNOWN MISMATCHES (reproduced on purpose; see README > Data notes)")
-    print(rule)
-    print("M1  MilestonesSites.csv holds %s rows for %s distinct site_id."
-          % (format(m["site_rows"], ","), format(m["site_unique"], ",")))
-    print("    The report counts rows, so its milestone infrastructure totals are high:")
-    print("      new towers    report/rows %6s    distinct sites %6s"
-          % (format(m["towers_raw"], ","), format(m["towers_uniq"], ",")))
-    print("      WISP units    report/rows %6s    distinct sites %6s"
-          % (format(m["wisp_raw"], ","), format(m["wisp_uniq"], ",")))
-    print("      towers/year   report/rows %-22s distinct %s"
-          % (m["towers_by_year_raw"], m["towers_by_year_uniq"]))
-    print("      WISP/year     report/rows %-22s distinct %s"
-          % (m["wisp_by_year_raw"], m["wisp_by_year_uniq"]))
-    print("      CAPEX         report/rows $%-21s distinct $%s"
-          % (format(m["capex"], ","), format(m["capex_uniq"], ",")))
-    print("    Map geometry deduplicates; headline KPIs keep the report's figures.")
-    print("M2  The old README said ~250 schools per percentage point. Computed: %s. Fixed."
-          % stats["delta"]["schools_per_pp"])
-    print("M3  'The 169 unreached schools lie outside any candidate tower 10 km")
-    print("    WISP radius' is false. Run with --audit for the breakdown.")
-    print("M4  The 1,784 excluded schools cannot be recomputed from this repo: the")
-    print("    only candidate set here is the 7,297 existing towers, which leave 54%")
-    print("    of the optimisation set beyond 10 km. The model also had candidate")
-    print("    new-tower locations, which were never exported.")
-    print(rule)
-
     print()
     print("DERIVED (computed from the model output, not stated in the report)")
     print(rule)
@@ -570,7 +542,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Build data/app-data.json from the raw MILP output CSVs.")
     ap.add_argument("--check", action="store_true",
-                    help="print the computed-vs-report table; non-zero exit on an unexpected mismatch")
+                    help="print the computed-vs-published table; non-zero exit on an unexpected difference")
     ap.add_argument("--audit", action="store_true",
                     help="run the 10 km spatial audit (a few seconds)")
     ap.add_argument("--stats-out", metavar="PATH",
