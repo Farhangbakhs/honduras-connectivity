@@ -11,3 +11,11 @@ brief_v2_prompt.md
 brief_preview.html
 /findings.json
 brief_reference_renderer.mjs
+
+# assistant and agent tooling
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+.agents/
+skills-lock.json
